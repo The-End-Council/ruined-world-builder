@@ -59,6 +59,8 @@ const Icon = ({ name, size = 18 }) => {
       return <svg {...common}><rect x="3" y="4" width="5" height="14" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/></svg>;
     case 'table':
       return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 16h18M10 4v16"/></svg>;
+    case 'isometric':
+      return <svg {...common}><path d="M12 3 21 8l-9 5-9-5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>;
     case 'menu':
       return <svg {...common}><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>;
     default: return null;

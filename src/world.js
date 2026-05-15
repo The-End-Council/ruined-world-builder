@@ -129,7 +129,12 @@
   let charYaw = 0;
   let charYawVisual = 0;
   let cameraTarget = { x: 0.5, z: 0.5 }; // looking at scene center
-  let cameraOffset = { dist: 14, height: 9, yaw: -0.55 };
+  const CAMERA_PRESETS = {
+    perspective: { dist: 14, height: 9, yaw: -0.55 },
+    isometric: { dist: 17, height: 13, yaw: -0.78 },
+  };
+  let cameraMode = 'perspective';
+  let cameraOffset = { ...CAMERA_PRESETS.perspective };
 
   // Keys
   const keys = { w: false, a: false, s: false, d: false };
@@ -549,6 +554,18 @@
       tz + Math.cos(yaw) * dist
     );
     camera.lookAt(tx, 0.5, tz);
+  }
+
+  function setCameraMode(mode) {
+    if (!CAMERA_PRESETS[mode]) return cameraMode;
+    cameraMode = mode;
+    cameraOffset = { ...CAMERA_PRESETS[mode] };
+    updateCameraPos();
+    return cameraMode;
+  }
+
+  function toggleIsometric() {
+    return setCameraMode(cameraMode === 'isometric' ? 'perspective' : 'isometric');
   }
 
   // ---------- Character ----------
@@ -1027,6 +1044,9 @@
     init,
     setSitting,
     setPlacement,
+    setCameraMode,
+    toggleIsometric,
+    getCameraMode: () => cameraMode,
     onPlacementChange: (fn) => { placementChangeHandler = fn; },
     getCharPos: () => ({ x: charPos.x, z: charPos.z }),
     setCharPos: (x, z) => { charPos.x = x; charPos.z = z; },

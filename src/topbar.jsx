@@ -6,6 +6,7 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
   const s = window.useStore();
   const [weatherOpen, setWeatherOpen] = React.useState(false);
   const [musicOpen, setMusicOpen] = React.useState(false);
+  const [isometricOn, setIsometricOn] = React.useState(() => window.World?.getCameraMode?.() === 'isometric');
 
   return (
     <div className="topbar">
@@ -42,6 +43,18 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
               <window.Icon name={viewMode === 'fullscreen' ? 'eye' : 'fullscreen'} />
             </button>
           )}
+          <button
+            className={'icon-btn ' + (isometricOn ? 'active' : '')}
+            title={isometricOn ? 'Perspectiveへ戻す' : 'Isometricへ切替'}
+            onClick={() => {
+              const mode = window.World?.toggleIsometric?.();
+              const on = mode === 'isometric';
+              setIsometricOn(on);
+              window.toast?.(on ? 'Isometric表示' : 'Perspective表示');
+            }}
+          >
+            <window.Icon name="isometric" />
+          </button>
           <div style={{ position: 'relative' }}>
             <button
               className={'icon-btn ' + (weatherOpen ? 'active' : '')}
