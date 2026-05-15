@@ -130,6 +130,7 @@
   let charYawVisual = 0;
   let cameraTarget = { x: 0.5, z: 0.5 }; // looking at scene center
   let cameraOffset = { dist: 14, height: 9, yaw: -0.55 };
+  let cameraFocusOverride = null;
 
   // Keys
   const keys = { w: false, a: false, s: false, d: false };
@@ -359,9 +360,15 @@
         stars.material.uniforms.time.value = waterTime;
       }
 
-      // Camera follows character softly
-      cameraTarget.x += ((charPosVisual.x) - cameraTarget.x) * 0.04;
-      cameraTarget.z += ((charPosVisual.z) - cameraTarget.z) * 0.04;
+      // Camera follows character softly unless a temporary focus target is active.
+      if (cameraFocusOverride && now < cameraFocusOverride.until) {
+        cameraTarget.x += (cameraFocusOverride.x - cameraTarget.x) * 0.09;
+        cameraTarget.z += (cameraFocusOverride.z - cameraTarget.z) * 0.09;
+      } else {
+        cameraFocusOverride = null;
+        cameraTarget.x += ((charPosVisual.x) - cameraTarget.x) * 0.04;
+        cameraTarget.z += ((charPosVisual.z) - cameraTarget.z) * 0.04;
+      }
       updateCameraPos();
 
       // Pinpoint light follows
@@ -549,6 +556,34 @@
       tz + Math.cos(yaw) * dist
     );
     camera.lookAt(tx, 0.5, tz);
+  }
+
+  function centerOnGrid() {
+    const s = window.Store.get();
+    const tiles = s?.world?.tiles || [];
+
+    if (tiles.length === 0) {
+      cameraFocusOverride = { x: 0.5, z: 0.5, until: performance.now() + 1200 };
+      return;
+    }
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    tiles.forEach(t => {
+      if (typeof t.x !== 'number' || typeof t.z !== 'number') return;
+      if (t.x < minX) minX = t.x;
+      if (t.x > maxX) maxX = t.x;
+      if (t.z < minZ) minZ = t.z;
+      if (t.z > maxZ) maxZ = t.z;
+    });
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minZ)) {
+      cameraFocusOverride = { x: 0.5, z: 0.5, until: performance.now() + 1200 };
+      return;
+    }
+
+    const centerX = ((minX + maxX) * 0.5) * TILE;
+    const centerZ = ((minZ + maxZ) * 0.5) * TILE;
+    cameraFocusOverride = { x: centerX, z: centerZ, until: performance.now() + 1200 };
   }
 
   // ---------- Character ----------
@@ -1027,6 +1062,7 @@
     init,
     setSitting,
     setPlacement,
+    centerOnGrid,
     onPlacementChange: (fn) => { placementChangeHandler = fn; },
     getCharPos: () => ({ x: charPos.x, z: charPos.z }),
     setCharPos: (x, z) => { charPos.x = x; charPos.z = z; },

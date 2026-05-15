@@ -42,6 +42,16 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
               <window.Icon name={viewMode === 'fullscreen' ? 'eye' : 'fullscreen'} />
             </button>
           )}
+          <button
+            className="icon-btn"
+            title="グリッド中央へ"
+            onClick={() => {
+              window.World?.centerOnGrid?.();
+              window.toast?.('グリッド中央へ移動');
+            }}
+          >
+            <window.Icon name="home" />
+          </button>
           <div style={{ position: 'relative' }}>
             <button
               className={'icon-btn ' + (weatherOpen ? 'active' : '')}
