@@ -5,7 +5,10 @@
 
 (function () {
   const TILE = 1.0;          // world units per tile
-  const TILE_H = 0.18;       // tile thickness
+  const TILE_H = 0.86;       // tile thickness (Minecraft-style cube blocks)
+  const TILE_BODY_H = 0.80;  // dark earth body — tall for visible cube sides
+  const TILE_CAP_H = 0.06;   // colored top cap thickness
+  const FURNITURE_H = 0.45;  // character landing height on furniture tops
   const GRID_OFFSET = 0;     // origin
 
   // ---------- Color presets per weather ----------
@@ -84,17 +87,27 @@
       label: '崩壊',
       sky: [0x000000, 0x080604, 0x100804],
       fog: [0x080404, 0.06],
-      sun: [0x180806, 0.6, [6, 10, 4]], // black sun => use very dark + ringlight
+      sun: [0x180806, 0.6, [6, 10, 4]],
       ambient: [0x180806, 0.3],
       ground: 0x0a0604,
       star: 0,
       mood: 'void',
     },
+    blood_moon: {
+      label: 'Blood Moon',
+      sky: [0x250405, 0x140203, 0x060101],
+      fog: [0x1c0203, 0.06],
+      sun: [0xdd1a08, 0.55, [5, 8, 5]],
+      ambient: [0x380808, 0.4],
+      ground: 0x120202,
+      star: 0.3,
+      mood: 'red',
+    },
   };
 
   // ---------- Tile materials ----------
   const TILE_MATERIALS = {
-    soil_barren:  { color: 0x4a3a2a, rough: 0.95 },
+    soil_barren:  { color: 0x8e6d48, rough: 0.93 },
     soil_ash:     { color: 0x5a554c, rough: 0.95 },
     soil_toxic:   { color: 0x4a5a3a, rough: 0.9 },
     soil_cracked: { color: 0x3e3022, rough: 0.95 },
@@ -114,6 +127,7 @@
   let charGroup, charBody, charHairFront, charSitting = false;
   let pinpointLight; // light over character
   let blackSun;      // for collapse weather
+  let bloodMoon;     // for blood_moon weather
   let waterTime = 0;
 
   // Internal state cache
@@ -125,8 +139,15 @@
   let raf = null;
   let placement = null; // { category, id } when in placement mode
   let placementGhost = null;
+  let placementRotation = 0; // 0-3 → 0/90/180/270 degrees (R key cycles)
+  let removeMode = false;
+  let removePreview = null;
+  let charVelY = 0;          // vertical velocity (fall + jump)
+  let charY = 0;             // current Y of charGroup
+  let charOnGround = true;   // standing on a tile
+  let charJumping = false;   // true when jump was initiated (allows mid-air movement)
   let raycaster = null;
-  let mouseNDC = { x: 0, y: 0 };
+  let mouseNDC = { x: NaN, y: NaN };
   let charPos = { x: 0, z: 0 };
   let charPosVisual = { x: 0, z: 0 }; // smoothed
   let charYaw = 0;
@@ -147,6 +168,17 @@
   let cameraOffset = { ...CAMERA_PRESETS.perspective };
   let cameraModeChangeHandler = null;
   let cameraFocusOverride = null;
+  let specialWeatherKey = null;
+  let developerOverlayEnabled = false;
+  let developerOverlayEl = null;
+  let developerOverlayChangeHandler = null;
+  let overlayFrameCounter = 0;
+  let overlayLastFpsSampleAt = 0;
+  let overlayFps = 0;
+  let overlayMaterialCount = 0;
+  let overlayProgramCount = 0;
+  let overlayLastHeavySampleAt = 0;
+  let removeModeChangeHandler = null;
 
   // Keys
   const keys = { w: false, a: false, s: false, d: false };
@@ -311,12 +343,27 @@
     scene.add(halo);
     blackSun.userData.halo = halo;
 
+    // Blood moon (blood_moon weather only)
+    const bMoonGeo = new THREE.CircleGeometry(3.2, 48);
+    const bMoonMat = new THREE.MeshBasicMaterial({ color: 0xcc1a0a, transparent: true, opacity: 0 });
+    bloodMoon = new THREE.Mesh(bMoonGeo, bMoonMat);
+    bloodMoon.position.set(10, 15, -18);
+    bloodMoon.lookAt(0, 0, 0);
+    scene.add(bloodMoon);
+    const bHaloGeo = new THREE.RingGeometry(3.3, 5.0, 64);
+    const bHaloMat = new THREE.MeshBasicMaterial({ color: 0x880806, transparent: true, opacity: 0, side: THREE.DoubleSide });
+    const bHalo = new THREE.Mesh(bHaloGeo, bHaloMat);
+    bHalo.position.copy(bloodMoon.position);
+    bHalo.lookAt(0, 0, 0);
+    scene.add(bHalo);
+    bloodMoon.userData.halo = bHalo;
+
     // Ground (extends beyond grid for context)
     const groundGeo = new THREE.PlaneGeometry(60, 60, 1, 1);
     const groundMat = new THREE.MeshStandardMaterial({ color: 0x14110c, roughness: 1.0, metalness: 0 });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.01;
+    ground.position.y = -0.82;
     ground.receiveShadow = true;
     scene.add(ground);
     scene.userData.ground = ground;
@@ -333,6 +380,10 @@
 
     // Initial render
     syncFromStore(window.Store.get());
+    // Sync char position once at startup only
+    const initPos = window.Store.get().character.position;
+    charPos.x = initPos.x; charPos.z = initPos.z;
+    charPosVisual.x = charPos.x; charPosVisual.z = charPos.z;
 
     // Animation loop
     let last = performance.now();
@@ -363,6 +414,43 @@
         charBody.position.y = 0.42 + bobY;
       }
 
+      // Unified Y physics — jump + furniture landing + fall + respawn
+      {
+        const fs = window.Store.get();
+        const tiles = fs.world.tiles;
+        const overTile = charSitting || tiles.some(t =>
+          Math.abs(charPos.x - t.x * TILE) < 0.50 && Math.abs(charPos.z - t.z * TILE) < 0.50
+        );
+        const furnitureSurf = () => !charSitting && charY > 0 && tiles.some(t =>
+          t.item && Math.abs(charPos.x - t.x * TILE) < 0.36 && Math.abs(charPos.z - t.z * TILE) < 0.36
+        );
+        const landH = furnitureSurf() ? FURNITURE_H : 0;
+        if (overTile && charY <= landH && charVelY <= 0) {
+          charY = landH; charVelY = 0; charOnGround = true; charJumping = false;
+        } else {
+          charVelY -= 14 * dt;
+          charY += charVelY * dt;
+          const lh = furnitureSurf() ? FURNITURE_H : 0;
+          if (overTile && charY <= lh && charVelY < 0) {
+            charY = lh; charVelY = 0; charOnGround = true; charJumping = false;
+          } else {
+            charOnGround = false;
+          }
+          if (charY < -5) {
+            const freeTile = tiles.find(t => !t.item);
+            if (freeTile) {
+              charPos.x = freeTile.x * TILE;
+              charPos.z = freeTile.z * TILE;
+              charPosVisual.x = charPos.x;
+              charPosVisual.z = charPos.z;
+              window.Store.setCharacterPos(charPos.x, charPos.z);
+            }
+            charY = 0; charVelY = 0; charOnGround = true; charJumping = false;
+          }
+        }
+        charGroup.position.y = charY;
+      }
+
       // Water ripple
       waterTime += dt;
       tileGroup.children.forEach(t => {
@@ -386,11 +474,13 @@
         cameraTarget.z += ((charPosVisual.z) - cameraTarget.z) * 0.04;
       }
       updateCameraPos();
+      updateRemovePreview();
 
       // Pinpoint light follows
       pinpointLight.position.set(charPosVisual.x, 2.2, charPosVisual.z + 0.2);
 
       renderer.render(scene, camera);
+      updateDeveloperOverlay(now);
       raf = requestAnimationFrame(tick);
     }
     raf = requestAnimationFrame(tick);
@@ -405,7 +495,9 @@
     // Raycaster + click placement
     raycaster = new THREE.Raycaster();
     renderer.domElement.addEventListener('pointermove', onPointerMove);
+    renderer.domElement.addEventListener('pointerleave', onPointerLeave);
     renderer.domElement.addEventListener('click', onCanvasClick);
+    updateCanvasCursor();
 
     // Subscribe to state changes
     window.Store.subscribe(syncFromStore);
@@ -418,6 +510,130 @@
     camera.updateProjectionMatrix();
   }
 
+  function updateCanvasCursor() {
+    const canvas = renderer?.domElement;
+    if (!canvas) return;
+    if (removeMode) {
+      canvas.style.cursor = 'crosshair';
+      return;
+    }
+    if (placement) {
+      canvas.style.cursor = 'copy';
+      return;
+    }
+    canvas.style.cursor = '';
+  }
+
+  function getTileAtCell(cell, worldState = window.Store.get()) {
+    if (!cell || !worldState?.world?.tiles) return null;
+    return worldState.world.tiles.find(t => t.x === cell.x && t.z === cell.z) || null;
+  }
+
+  function getRemoveTargetAtCell(cell, worldState = window.Store.get()) {
+    const tile = getTileAtCell(cell, worldState);
+    if (!tile) return null;
+    if (tile.item) {
+      return { valid: true, kind: 'item', tile };
+    }
+    if (window.Store?.isStarterTileProtected?.(tile.x, tile.z)) {
+      return { valid: false, kind: 'tile', reason: 'protected_tile', tile };
+    }
+    const tileCount = worldState?.world?.tiles?.length || 0;
+    if (tileCount <= 1) {
+      return { valid: false, kind: 'tile', reason: 'last_tile', tile };
+    }
+    return { valid: true, kind: 'tile', tile };
+  }
+
+  function ensureRemovePreview() {
+    if (removePreview || !scene || !window.THREE) return removePreview;
+    const THREE = window.THREE;
+    const group = new THREE.Group();
+    group.visible = false;
+    group.renderOrder = 95;
+
+    const fillMat = new THREE.MeshBasicMaterial({
+      color: 0xff6b58,
+      transparent: true,
+      opacity: 0.22,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const fill = new THREE.Mesh(new THREE.PlaneGeometry(TILE * 0.9, TILE * 0.9), fillMat);
+    fill.rotation.x = -Math.PI / 2;
+    fill.position.y = 0.001;
+    fill.renderOrder = 95;
+    group.add(fill);
+
+    const totalBlockH = TILE_BODY_H + TILE_CAP_H;
+    const edgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(TILE * 0.98, totalBlockH, TILE * 0.98));
+    const edgeMat = new THREE.LineBasicMaterial({
+      color: 0xff9a74,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    const edge = new THREE.LineSegments(edgeGeo, edgeMat);
+    edge.renderOrder = 96;
+    group.add(edge);
+
+    group.userData.fillMat = fillMat;
+    group.userData.edgeMat = edgeMat;
+    group.userData.blockEdge = edge;
+    scene.add(group);
+    removePreview = group;
+    return removePreview;
+  }
+
+  function updateRemovePreview() {
+    const preview = ensureRemovePreview();
+    if (!preview) return;
+    if (!removeMode || placement || !raycaster || !camera) {
+      preview.visible = false;
+      return;
+    }
+    const cell = getHoveredCell();
+    const target = getRemoveTargetAtCell(cell);
+    if (!cell || !target) {
+      preview.visible = false;
+      return;
+    }
+
+    const isItem = target.kind === 'item';
+    const valid = !!target.valid;
+    const groupY = isItem ? 0.14 : 0.11;
+    preview.position.set(cell.x * TILE, groupY, cell.z * TILE);
+    preview.visible = true;
+
+    // Block center world Y = (-0.77 + 0.09) / 2 = -0.34
+    const blockEdge = preview.userData.blockEdge;
+    if (blockEdge) blockEdge.position.y = -0.34 - groupY;
+
+    const fillMat = preview.userData.fillMat;
+    const edgeMat = preview.userData.edgeMat;
+    if (!fillMat || !edgeMat) return;
+
+    if (!valid) {
+      fillMat.color.set(0x5f4b46);
+      fillMat.opacity = 0.14;
+      edgeMat.color.set(0x8a6d63);
+      edgeMat.opacity = 0.52;
+      return;
+    }
+
+    if (isItem) {
+      fillMat.color.set(0xffa060);
+      fillMat.opacity = 0.26;
+      edgeMat.color.set(0xffc08d);
+      edgeMat.opacity = 0.98;
+    } else {
+      fillMat.color.set(0xff6754);
+      fillMat.opacity = 0.22;
+      edgeMat.color.set(0xff8b76);
+      edgeMat.opacity = 0.95;
+    }
+  }
+
   function onKeyDown(e) {
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) return;
     const k = e.key.toLowerCase();
@@ -425,6 +641,12 @@
     if (k === 's' || k === 'arrowdown')  { keys.s = true; e.preventDefault(); }
     if (k === 'a' || k === 'arrowleft')  { keys.a = true; e.preventDefault(); }
     if (k === 'd' || k === 'arrowright') { keys.d = true; e.preventDefault(); }
+    if (e.code === 'Space' && charOnGround && !charSitting) {
+      charVelY = 5.0;
+      charOnGround = false;
+      charJumping = true;
+      e.preventDefault();
+    }
   }
   function onKeyUp(e) {
     const k = e.key.toLowerCase();
@@ -437,7 +659,14 @@
         setCameraMode('perspective');
         window.toast?.('Walk表示を終了');
       }
+      if (removeMode) {
+        setRemoveModeEnabled(false, { silentToast: true });
+      }
       setPlacement(null);
+    }
+    if (k === 'r' && placement) {
+      placementRotation = (placementRotation + 1) % 4;
+      if (placementGhost) placementGhost.rotation.y = -placementRotation * Math.PI / 2;
     }
   }
 
@@ -446,32 +675,50 @@
     mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     updateGhost();
+    updateRemovePreview();
+  }
+
+  function onPointerLeave() {
+    mouseNDC.x = NaN;
+    mouseNDC.y = NaN;
+    updateRemovePreview();
   }
 
   function getHoveredCell() {
     if (!raycaster || !camera) return null;
+    if (!Number.isFinite(mouseNDC.x) || !Number.isFinite(mouseNDC.y)) return null;
     raycaster.setFromCamera(mouseNDC, camera);
-    // Intersect a horizontal plane at y=0.09 (tile top)
-    const ground = scene.userData.ground;
-    const hits = raycaster.intersectObjects([ground], false);
-    if (!hits[0]) return null;
-    const p = hits[0].point;
-    return { x: Math.round(p.x / TILE), z: Math.round(p.z / TILE) };
+    // Intersect virtual horizontal plane at tile surface y=0.09
+    const plane = new (window.THREE.Plane)(new (window.THREE.Vector3)(0, 1, 0), -0.09);
+    const pt = new (window.THREE.Vector3)();
+    if (!raycaster.ray.intersectPlane(plane, pt)) return null;
+    return { x: Math.round(pt.x / TILE), z: Math.round(pt.z / TILE) };
   }
 
   function updateGhost() {
     if (!placement || !placementGhost) return;
     const cell = getHoveredCell();
     if (!cell) return;
-    placementGhost.position.set(cell.x * TILE, 0.1, cell.z * TILE);
-    // Check validity
+
+    const isTile = placement.category === 'tile';
+    const ghostY = isTile ? -(TILE_BODY_H / 2 - 0.03) : 0.09;
+    placementGhost.position.set(cell.x * TILE, ghostY, cell.z * TILE);
+    placementGhost.rotation.y = -placementRotation * Math.PI / 2;
+
+    // Validity check
     const s = window.Store.get();
     const tile = s.world.tiles.find(t => t.x === cell.x && t.z === cell.z);
-    let valid = true;
-    if (placement.category === 'tile') {
-      valid = true; // can replace or place anywhere
+    let valid;
+    if (isTile) {
+      // Must be adjacent to an existing tile (or world is empty)
+      const adjacent = s.world.tiles.length === 0 || s.world.tiles.some(t =>
+        (Math.abs(t.x - cell.x) === 1 && t.z === cell.z) ||
+        (t.x === cell.x && Math.abs(t.z - cell.z) === 1)
+      );
+      valid = adjacent;
     } else {
-      valid = !!tile && !tile.item; // need a tile, must be empty
+      const spawn = s.world.spawnTile || { x: 0, z: 0 };
+      valid = !!tile && !tile.item && !(cell.x === spawn.x && cell.z === spawn.z);
     }
     placementGhost.userData.parts?.forEach(m => {
       if (m.material) m.material.opacity = valid ? 0.6 : 0.3;
@@ -482,18 +729,58 @@
   }
 
   function onCanvasClick(e) {
-    if (!placement) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     const cell = getHoveredCell();
     if (!cell) return;
-    window.Store.placeAt(placement.category, placement.id, cell.x, cell.z);
+
+    if (removeMode) {
+      const removed = window.Store.removeAt(cell.x, cell.z);
+      if (!removed || !removed.ok) {
+        if (removed?.reason === 'last_tile') window.toast?.('最後のタイルは削除できません', 'warn');
+        if (removed?.reason === 'protected_tile') window.toast?.('初期4タイルは削除できません', 'warn');
+        updateRemovePreview();
+        return;
+      }
+      window.toast?.('回収: ' + (removed.name || removed.id), 'success');
+      updateRemovePreview();
+      return;
+    }
+
+    if (!placement) return;
+    // Validate placement before calling placeAt
+    const s = window.Store.get();
+    const isTile = placement.category === 'tile';
+    let valid = false;
+    if (isTile) {
+      valid = s.world.tiles.length === 0 || s.world.tiles.some(t =>
+        (Math.abs(t.x - cell.x) === 1 && t.z === cell.z) ||
+        (t.x === cell.x && Math.abs(t.z - cell.z) === 1)
+      );
+    } else {
+      const tile = s.world.tiles.find(t => t.x === cell.x && t.z === cell.z);
+      const spawn = s.world.spawnTile || { x: 0, z: 0 };
+      if (tile && cell.x === spawn.x && cell.z === spawn.z) {
+        window.toast?.('スポーン地点には配置できません', 'error');
+        return;
+      }
+      valid = !!tile && !tile.item;
+    }
+    if (!valid) {
+      window.toast?.('配置できません', 'error');
+      return;
+    }
+    window.Store.placeAt(placement.category, placement.id, cell.x, cell.z, placementRotation);
     window.toast?.('配置: ' + (window.Store.CATALOG_MAP[placement.id]?.name || placement.id), 'success');
     // Stay in placement mode if still have stock
-    const s = window.Store.get();
-    const remaining = s.inventory[placement.category]?.[placement.id] || 0;
+    const remaining = (window.Store.get().inventory[placement.category]?.[placement.id]) || 0;
     if (remaining <= 0) setPlacement(null);
+    updateRemovePreview();
   }
 
   function setPlacement(p) {
+    if (p && removeMode) setRemoveModeEnabled(false, { silentToast: true });
     placement = p;
     // Clear old ghost
     if (placementGhost) {
@@ -502,10 +789,12 @@
       placementGhost = null;
     }
     if (p) {
-      // Build ghost mesh
+      placementRotation = 0;
       placementGhost = buildGhost(p);
       scene.add(placementGhost);
     }
+    updateCanvasCursor();
+    updateRemovePreview();
     if (placementChangeHandler) placementChangeHandler(p);
   }
   let placementChangeHandler = null;
@@ -541,22 +830,42 @@
 
   function handleMovement(dt) {
     if (charSitting) return;
-    let dx = 0, dz = 0;
-    if (keys.w) dz -= 1;
-    if (keys.s) dz += 1;
-    if (keys.a) dx -= 1;
-    if (keys.d) dx += 1;
-    if (dx === 0 && dz === 0) return;
+    let inputX = 0, inputZ = 0;
+    if (keys.w) inputZ -= 1;
+    if (keys.s) inputZ += 1;
+    if (keys.a) inputX -= 1;
+    if (keys.d) inputX += 1;
+    if (inputX === 0 && inputZ === 0) return;
+    let yawRef = 0;
+    if (cameraMode === 'fp') yawRef = charYawVisual || charYaw || 0;
+    else if (cameraMode !== 'topdown') yawRef = cameraOffset.yaw || 0;
+    const c = Math.cos(yawRef), s = Math.sin(yawRef);
+    let dx = inputX * c + inputZ * s;
+    let dz = -inputX * s + inputZ * c;
     const len = Math.hypot(dx, dz);
     dx /= len; dz /= len;
     const speed = 3.5;
-    charPos.x += dx * speed * dt;
-    charPos.z += dz * speed * dt;
-    // Clamp
-    charPos.x = Math.max(-14, Math.min(14, charPos.x));
-    charPos.z = Math.max(-14, Math.min(14, charPos.z));
-    // Yaw towards motion
-    charYaw = Math.atan2(dx, dz);
+    const nx = charPos.x + dx * speed * dt;
+    const nz = charPos.z + dz * speed * dt;
+    const tiles = window.Store.get().world.tiles;
+    // While falling off edge (not a deliberate jump), block re-entry onto tiles
+    if (!charOnGround && !charJumping) {
+      const wouldLand = tiles.some(t =>
+        Math.abs(nx - t.x * TILE) < 0.5 && Math.abs(nz - t.z * TILE) < 0.5
+      );
+      if (wouldLand) return;
+    }
+    // Furniture collision — skip when elevated on furniture top
+    const hitItem = charY < FURNITURE_H - 0.1 && tiles.some(t =>
+      t.item && Math.abs(nx - t.x * TILE) < 0.36 && Math.abs(nz - t.z * TILE) < 0.36
+    );
+    if (hitItem) return;
+    charPos.x = Math.max(-14, Math.min(14, nx));
+    charPos.z = Math.max(-14, Math.min(14, nz));
+    // Yaw towards motion (except first-person strafe)
+    if (cameraMode !== 'fp') {
+      charYaw = Math.atan2(dx, dz);
+    }
     // Persist (throttled)
     if (!handleMovement._save || performance.now() - handleMovement._save > 500) {
       handleMovement._save = performance.now();
@@ -615,6 +924,53 @@
     return setCameraMode(cameraMode === 'topdown' ? 'perspective' : 'topdown');
   }
 
+  function zoomCameraByScale(scale) {
+    if (!Number.isFinite(scale) || scale <= 0) return false;
+    if (cameraMode === 'fp') return false;
+
+    if (cameraMode === 'topdown') {
+      cameraOffset.height = Math.max(8, Math.min(38, cameraOffset.height * scale));
+    } else {
+      cameraOffset.dist = Math.max(4, Math.min(26, cameraOffset.dist * scale));
+      cameraOffset.height = Math.max(3, Math.min(20, cameraOffset.height * scale));
+    }
+    updateCameraPos();
+    return true;
+  }
+
+  function zoomInCamera() {
+    return zoomCameraByScale(0.9);
+  }
+
+  function zoomOutCamera() {
+    return zoomCameraByScale(1.12);
+  }
+
+  function rotateCamera(step = Math.PI / 10) {
+    if (cameraMode === 'fp' || cameraMode === 'topdown') return false;
+    cameraOffset.yaw += step;
+    updateCameraPos();
+    return true;
+  }
+
+  function setRemoveModeEnabled(enabled, options = {}) {
+    const next = !!enabled;
+    if (removeMode === next) return removeMode;
+    removeMode = next;
+    if (removeMode && placement) setPlacement(null);
+    updateCanvasCursor();
+    updateRemovePreview();
+    if (!options.silentToast) {
+      window.toast?.(removeMode ? '削除モード: ON' : '削除モード: OFF');
+    }
+    removeModeChangeHandler?.(removeMode);
+    return removeMode;
+  }
+
+  function toggleRemoveMode() {
+    return setRemoveModeEnabled(!removeMode);
+  }
+
   function centerOnGrid() {
     const s = window.Store.get();
     const tiles = s?.world?.tiles || [];
@@ -641,6 +997,106 @@
     const centerX = ((minX + maxX) * 0.5) * TILE;
     const centerZ = ((minZ + maxZ) * 0.5) * TILE;
     cameraFocusOverride = { x: centerX, z: centerZ, until: performance.now() + 1200 };
+  }
+
+  function ensureDeveloperOverlay() {
+    if (developerOverlayEl) return developerOverlayEl;
+    const el = document.createElement('div');
+    el.setAttribute('data-role', 'developer-overlay');
+    el.style.position = 'fixed';
+    el.style.top = '220px';
+    el.style.right = '16px';
+    el.style.zIndex = '65';
+    el.style.pointerEvents = 'none';
+    el.style.whiteSpace = 'pre';
+    el.style.fontFamily = "var(--font-mono), 'JetBrains Mono', monospace";
+    el.style.fontSize = '11px';
+    el.style.lineHeight = '1.45';
+    el.style.letterSpacing = '0.02em';
+    el.style.color = 'var(--ink-soft)';
+    el.style.background = 'rgba(6, 4, 3, 0.82)';
+    el.style.border = '1px solid var(--line)';
+    el.style.borderRadius = '8px';
+    el.style.padding = '8px 10px';
+    el.style.backdropFilter = 'blur(3px)';
+    el.style.display = 'none';
+    document.body.appendChild(el);
+    developerOverlayEl = el;
+    return el;
+  }
+
+  function countSceneMaterials() {
+    if (!scene) return 0;
+    const materials = new Set();
+    scene.traverse((node) => {
+      if (!node || !node.material) return;
+      if (Array.isArray(node.material)) {
+        node.material.forEach((m) => { if (m) materials.add(m); });
+      } else {
+        materials.add(node.material);
+      }
+    });
+    return materials.size;
+  }
+
+  function updateDeveloperOverlay(now) {
+    if (!developerOverlayEnabled || !renderer) return;
+    const el = ensureDeveloperOverlay();
+    if (!el) return;
+
+    overlayFrameCounter += 1;
+    if (!overlayLastFpsSampleAt) overlayLastFpsSampleAt = now;
+    const fpsElapsed = now - overlayLastFpsSampleAt;
+    if (fpsElapsed >= 450) {
+      overlayFps = (overlayFrameCounter * 1000) / fpsElapsed;
+      overlayFrameCounter = 0;
+      overlayLastFpsSampleAt = now;
+    }
+
+    if (!overlayLastHeavySampleAt || (now - overlayLastHeavySampleAt) >= 650) {
+      overlayMaterialCount = countSceneMaterials();
+      overlayProgramCount = renderer.info?.programs?.length || 0;
+      overlayLastHeavySampleAt = now;
+    }
+
+    const frame = renderer.info?.render?.frame ?? 0;
+    const draws = renderer.info?.render?.calls ?? 0;
+    const tris = renderer.info?.render?.triangles ?? 0;
+    const geoms = renderer.info?.memory?.geometries ?? 0;
+    const texs = renderer.info?.memory?.textures ?? 0;
+    const ghosts = placementGhost ? 1 : 0;
+
+    const rows = [
+      'developer overlay',
+      `fps:    ${overlayFps.toFixed(1)}`,
+      `frame:  ${frame}`,
+      `draws:  ${draws}`,
+      `tris:   ${tris}`,
+      `geoms:  ${geoms}`,
+      `mats:   ${overlayMaterialCount}`,
+      `grogs:  ${overlayProgramCount}`,
+      `texs:   ${texs}`,
+      `ghosts: ${ghosts}`,
+    ];
+    el.textContent = rows.join('\n');
+  }
+
+  function setDeveloperOverlayEnabled(enabled) {
+    const next = !!enabled;
+    developerOverlayEnabled = next;
+    const el = ensureDeveloperOverlay();
+    if (el) el.style.display = next ? 'block' : 'none';
+    if (next) {
+      overlayFrameCounter = 0;
+      overlayLastFpsSampleAt = 0;
+      overlayLastHeavySampleAt = 0;
+    }
+    developerOverlayChangeHandler?.(developerOverlayEnabled);
+    return developerOverlayEnabled;
+  }
+
+  function toggleDeveloperOverlay() {
+    return setDeveloperOverlayEnabled(!developerOverlayEnabled);
   }
 
   // ---------- Character ----------
@@ -740,15 +1196,16 @@
     charSitting = sitting;
     const desk = findDeskPosition();
     if (sitting && desk) {
-      // Position character at chair (next to desk)
       const chair = findChairPosition() || { x: desk.x + 1, z: desk.z };
       charPos.x = chair.x * TILE;
       charPos.z = chair.z * TILE;
-      // Face the desk
+      charPosVisual.x = charPos.x;
+      charPosVisual.z = charPos.z;
       const dx = desk.x - chair.x;
       const dz = desk.z - chair.z;
       charYaw = Math.atan2(dx, dz);
-      // Lower body to sitting pose
+      charYawVisual = charYaw;
+      charY = 0; charVelY = 0; charOnGround = true;
       const parts = charGroup.userData.parts;
       if (parts) {
         parts.body.position.y = 0.32;
@@ -756,6 +1213,28 @@
         parts.skirt.position.y = 0.16;
       }
     } else {
+      // Stand up: teleport to nearest adjacent furniture-free tile
+      const chair = findChairPosition();
+      if (chair) {
+        const s = window.Store.get();
+        const adj = [
+          { x: chair.x - 1, z: chair.z },
+          { x: chair.x + 1, z: chair.z },
+          { x: chair.x,     z: chair.z - 1 },
+          { x: chair.x,     z: chair.z + 1 },
+        ];
+        const free = adj.find(c => {
+          const t = s.world.tiles.find(t => t.x === c.x && t.z === c.z);
+          return t && !t.item;
+        });
+        if (free) {
+          charPos.x = free.x * TILE;
+          charPos.z = free.z * TILE;
+          charPosVisual.x = charPos.x;
+          charPosVisual.z = charPos.z;
+        }
+      }
+      charY = 0; charVelY = 0; charOnGround = true;
       const parts = charGroup.userData.parts;
       if (parts) {
         parts.body.position.y = 0.42;
@@ -779,7 +1258,8 @@
   // ---------- Sync from store ----------
   function syncFromStore(state) {
     // Time / season / weather mode
-    const nextTimeOfDay = state.world.timeOfDay || state.world.weather || 'night';
+    const nextSpecial = state.world.specialWeather || null;
+    const nextTimeOfDay = nextSpecial || state.world.timeOfDay || state.world.weather || 'night';
     const nextSeason = state.world.season || 'spring';
     const nextWeatherMode = state.world.weatherMode || 'clear';
     if (
@@ -787,22 +1267,20 @@
       || nextSeason !== seasonKey
       || nextWeatherMode !== weatherModeKey
       || state.world.weather !== weatherKey
+      || nextSpecial !== specialWeatherKey
     ) {
       applyWeather(nextTimeOfDay, nextSeason, nextWeatherMode);
       timeOfDayKey = nextTimeOfDay;
       seasonKey = nextSeason;
       weatherModeKey = nextWeatherMode;
       weatherKey = state.world.weather;
+      specialWeatherKey = nextSpecial;
     }
 
     // Tiles diff
     rebuildTiles(state.world.tiles);
+    updateRemovePreview();
 
-    // Char position from store (only if not currently moving, to avoid jitter)
-    if (!keys.w && !keys.a && !keys.s && !keys.d && !charSitting) {
-      charPos.x = state.character.position.x;
-      charPos.z = state.character.position.z;
-    }
   }
 
   function rebuildTiles(tiles) {
@@ -824,27 +1302,30 @@
     }
 
     tiles.forEach(t => {
-      // Tile
       const mat = TILE_MATERIALS[t.type] || TILE_MATERIALS.soil_barren;
       const isWater = (t.type === 'water_murky');
-      const tileGeo = new THREE.BoxGeometry(TILE * 0.98, TILE_H, TILE * 0.98);
-      const tileMat = new THREE.MeshStandardMaterial({
-        color: mat.color,
-        roughness: mat.rough ?? 0.9,
-        metalness: 0.0,
-      });
-      // Subtle vertex jitter for low-poly feel
-      const pos = tileGeo.attributes.position;
-      for (let i = 0; i < pos.count; i++) {
-        if (pos.getY(i) > 0) {
-          const jx = (Math.sin(t.x * 9.3 + t.z * 3.7 + i) * 0.03);
-          const jz = (Math.cos(t.x * 7.1 + t.z * 5.9 + i) * 0.03);
-          pos.setY(i, pos.getY(i) + jx * 0.5 + jz * 0.2);
-        }
-      }
-      tileGeo.computeVertexNormals();
-      const mesh = new THREE.Mesh(tileGeo, tileMat);
-      mesh.position.set(t.x * TILE, 0, t.z * TILE);
+
+      // ---- Dark earth body (full width, peeks around cap for depth) ----
+      const bodyColor = new THREE.Color(mat.color).multiplyScalar(0.38);
+      const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 1.0, metalness: 0.0 });
+      const bodyGeo = new THREE.BoxGeometry(TILE * 1.01, TILE_BODY_H, TILE * 1.01);
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.position.set(t.x * TILE, -TILE_BODY_H * 0.5 + 0.03, t.z * TILE);
+      body.receiveShadow = true;
+      tileGroup.add(body);
+
+      // ---- Colored top cap (narrower = ledge effect) ----
+      const topColor = new THREE.Color(mat.color);
+      const sideColor = topColor.clone().multiplyScalar(0.48);
+      const topMat = new THREE.MeshStandardMaterial({ color: topColor, roughness: mat.rough ?? 0.9, metalness: 0.0 });
+      const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.97, metalness: 0.0 });
+      const capGeo = new THREE.BoxGeometry(TILE * 0.93, TILE_CAP_H, TILE * 0.93);
+      // BoxGeometry groups: [+x, -x, +y(top), -y(bottom), +z, -z]
+      const mesh = isWater
+        ? new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ color: mat.color, roughness: 0.2, metalness: 0.0, transparent: true, opacity: 0.80 }))
+        : new THREE.Mesh(capGeo, [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
+      const capY = 0.03 + TILE_CAP_H * 0.5;  // sits on top of body, top face = 0.09
+      mesh.position.set(t.x * TILE, isWater ? capY - 0.04 : capY, t.z * TILE);
       mesh.receiveShadow = true;
       mesh.castShadow = false;
       mesh.userData.x = t.x;
@@ -852,47 +1333,97 @@
       mesh.userData.isWater = isWater;
       tileGroup.add(mesh);
 
-      // Tile detail — cracks for cracked, glow specks for toxic etc.
+      // ---- Tile surface details ----
+      const surfY = 0.09; // top of cap
+      if (t.type === 'soil_barren') {
+        const cx = t.x * TILE, cz = t.z * TILE;
+        // Crack lines — thin flat planes, semi-transparent dark
+        const crackMat = new THREE.MeshBasicMaterial({ color: 0x3a2810, transparent: true, opacity: 0.55, side: THREE.DoubleSide });
+        [
+          { w: 0.38, rot: 0.28, px: -0.05, pz: -0.08 },
+          { w: 0.26, rot: -0.62, px: 0.14, pz: 0.20 },
+        ].forEach(({ w, rot, px, pz }) => {
+          const cg = new THREE.PlaneGeometry(w, 0.012);
+          const cm = new THREE.Mesh(cg, crackMat);
+          cm.rotation.x = -Math.PI / 2;
+          cm.rotation.z = rot;
+          cm.position.set(cx + px, surfY + 0.001, cz + pz);
+          tileGroup.add(cm);
+        });
+        // Pebbles — 5 flattened spheres, 3 colour variants
+        const pebMats = [
+          new THREE.MeshStandardMaterial({ color: 0x7a7268, roughness: 0.9 }),
+          new THREE.MeshStandardMaterial({ color: 0x4e3e2c, roughness: 1.0 }),
+          new THREE.MeshStandardMaterial({ color: 0xa89c8c, roughness: 0.85 }),
+        ];
+        [
+          { px: -0.22, pz: -0.18, r: 0.040, m: 0 },
+          { px:  0.20, pz:  0.12, r: 0.032, m: 2 },
+          { px: -0.05, pz:  0.28, r: 0.028, m: 1 },
+          { px:  0.30, pz: -0.26, r: 0.036, m: 0 },
+          { px:  0.08, pz: -0.10, r: 0.022, m: 2 },
+        ].forEach(({ px, pz, r, m }) => {
+          const sg = new THREE.SphereGeometry(r, 5, 3);
+          const pb = new THREE.Mesh(sg, pebMats[m]);
+          pb.scale.y = 0.58;
+          pb.position.set(cx + px, surfY + r * 0.58 - 0.004, cz + pz);
+          tileGroup.add(pb);
+        });
+        // Dry grass tufts — crossed PlaneGeometry pairs
+        const grassMat = new THREE.MeshStandardMaterial({ color: 0xb8a040, roughness: 1.0, side: THREE.DoubleSide, transparent: true, opacity: 0.88 });
+        [
+          { px: -0.28, pz:  0.10, rot: 0.4 },
+          { px:  0.18, pz: -0.30, rot: -0.5 },
+          { px: -0.10, pz: -0.22, rot: 1.1 },
+        ].forEach(({ px, pz, rot }) => {
+          for (let a = 0; a < 2; a++) {
+            const gg = new THREE.PlaneGeometry(0.10, 0.12);
+            const gm = new THREE.Mesh(gg, grassMat);
+            gm.rotation.y = rot + a * Math.PI / 2;
+            gm.position.set(cx + px, surfY + 0.06, cz + pz);
+            tileGroup.add(gm);
+          }
+        });
+      }
       if (t.type === 'soil_toxic') {
         const glow = new THREE.PointLight(0x9bcc6a, 0.25, 1.5, 1.5);
         glow.position.set(t.x * TILE, 0.05, t.z * TILE);
         tileGroup.add(glow);
       }
       if (t.type === 'brick_ruin') {
-        // Small bumps to simulate broken brick
         for (let i = 0; i < 3; i++) {
           const bg = new THREE.BoxGeometry(0.12, 0.06, 0.16);
           const bm = new THREE.MeshStandardMaterial({ color: 0x6a3a26, roughness: 0.9 });
           const bb = new THREE.Mesh(bg, bm);
-          bb.position.set(t.x * TILE + (i - 1) * 0.22, 0.12, t.z * TILE - 0.15);
+          bb.position.set(t.x * TILE + (i - 1) * 0.22, surfY + 0.03, t.z * TILE - 0.15);
           bb.rotation.y = (i - 1) * 0.4;
           tileGroup.add(bb);
         }
       }
       if (t.type === 'soil_cracked') {
-        const cg = new THREE.PlaneGeometry(0.85, 0.04);
+        const cg = new THREE.PlaneGeometry(0.80, 0.04);
         const cm = new THREE.MeshBasicMaterial({ color: 0x0a0604, transparent: true, opacity: 0.65 });
         const c1 = new THREE.Mesh(cg, cm);
         c1.rotation.x = -Math.PI / 2;
-        c1.position.set(t.x * TILE, 0.091, t.z * TILE);
+        c1.position.set(t.x * TILE, surfY + 0.001, t.z * TILE);
         c1.rotation.z = 0.4;
         tileGroup.add(c1);
         const c2 = new THREE.Mesh(cg, cm);
         c2.rotation.x = -Math.PI / 2;
-        c2.position.set(t.x * TILE, 0.091, t.z * TILE + 0.15);
+        c2.position.set(t.x * TILE, surfY + 0.001, t.z * TILE + 0.15);
         c2.rotation.z = -0.6;
         tileGroup.add(c2);
       }
 
       // Item on tile
       if (t.item) {
-        const m = buildItem(t.item, t.x, t.z);
+        const m = buildItem(t.item, t.x, t.z, t.itemRotation || 0);
         if (m) itemGroup.add(m);
       }
     });
   }
 
-  function buildItem(id, x, z) {
+  function buildItem(id, x, z, rotation = 0) {
     const THREE = window.THREE;
     const g = new THREE.Group();
     g.position.set(x * TILE, 0.09, z * TILE);
@@ -1060,6 +1591,7 @@
       g.add(box);
     }
 
+    if (rotation) g.rotation.y = -rotation * Math.PI / 2;
     return g;
   }
 
@@ -1147,6 +1679,11 @@
       blackSun.material.opacity = (key === 'collapse') ? 1.0 : 0.0;
       blackSun.userData.halo.material.opacity = (key === 'collapse') ? 0.5 : 0.0;
     }
+    // Blood moon visible only for 'blood_moon'
+    if (bloodMoon) {
+      bloodMoon.material.opacity = (key === 'blood_moon') ? 1.0 : 0.0;
+      bloodMoon.userData.halo.material.opacity = (key === 'blood_moon') ? 0.45 : 0.0;
+    }
 
     // Adjust hemi
     if (hemiLight) {
@@ -1171,9 +1708,20 @@
     setPlacement,
     setCameraMode,
     toggleTopdown,
+    zoomInCamera,
+    zoomOutCamera,
+    rotateCamera,
     centerOnGrid,
+    setRemoveModeEnabled,
+    toggleRemoveMode,
+    setDeveloperOverlayEnabled,
+    toggleDeveloperOverlay,
     getCameraMode: () => cameraMode,
+    getRemoveModeEnabled: () => removeMode,
+    getDeveloperOverlayEnabled: () => developerOverlayEnabled,
     onCameraModeChange: (fn) => { cameraModeChangeHandler = fn; },
+    onRemoveModeChange: (fn) => { removeModeChangeHandler = fn; },
+    onDeveloperOverlayChange: (fn) => { developerOverlayChangeHandler = fn; },
     onPlacementChange: (fn) => { placementChangeHandler = fn; },
     getCharPos: () => ({ x: charPos.x, z: charPos.z }),
     setCharPos: (x, z) => { charPos.x = x; charPos.z = z; },

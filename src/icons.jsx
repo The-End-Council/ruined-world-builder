@@ -41,6 +41,18 @@ const Icon = ({ name, size = 18 }) => {
       return <svg {...common}><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>;
     case 'home':
       return <svg {...common}><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>;
+    case 'camera':
+      return <svg {...common}><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.4-2h5.2L16 7"/><circle cx="12" cy="13.5" r="3.5"/></svg>;
+    case 'zoomIn':
+      return <svg {...common}><circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6"/><path d="M21 21l-4.3-4.3"/></svg>;
+    case 'zoomOut':
+      return <svg {...common}><circle cx="11" cy="11" r="7"/><path d="M8 11h6"/><path d="M21 21l-4.3-4.3"/></svg>;
+    case 'rotate':
+      return <svg {...common}><path d="M3 11a8 8 0 1 0 3-6.2"/><path d="M3 4v5h5"/></svg>;
+    case 'cursor':
+      return <svg {...common}><path d="M5 3l12 10-5 1 2 6-3 1-2-6-4 3z"/></svg>;
+    case 'save':
+      return <svg {...common}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>;
     case 'chevron':
       return <svg {...common}><path d="M9 6l6 6-6 6"/></svg>;
     case 'check':
@@ -71,6 +83,8 @@ const Icon = ({ name, size = 18 }) => {
       return <svg {...common}><circle cx="12" cy="5.5" r="2"/><path d="M12 7.5v5l3 2"/><path d="M12 12.5l-3 4"/><path d="M12 12.5l2 5"/><path d="M9 16.5l-3 3"/><path d="M14 17.5l3 3"/></svg>;
     case 'menu':
       return <svg {...common}><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>;
+    case 'calendar':
+      return <svg {...common}><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M8 14h2M13 14h3M8 17h2M13 17h3"/></svg>;
     default: return null;
   }
 };
@@ -109,29 +123,104 @@ const useStore = () => {
 };
 window.useStore = useStore;
 
-/* ---------- 2D item glyph (used in inventory cells & shop) ---------- */
+/* ---------- Isometric 3D item glyph — Minecraft-style cube blocks ---------- */
 const ItemGlyph = ({ id, size = 36 }) => {
+  const v = "0 0 48 48";
+  // Standard cube (tiles, furniture)
+  const CT = "24,4 44,16 24,28 4,16";
+  const CL = "4,16 24,28 24,44 4,32";
+  const CR = "24,28 44,16 44,32 24,44";
+  // Tall cube (buildings)
+  const TT = "24,2 44,12 24,22 4,12";
+  const TL = "4,12 24,22 24,46 4,36";
+  const TR = "24,22 44,12 44,36 24,46";
   const sw = 1.4;
-  // Each item gets a stylized SVG glyph
   const common = { width: size, height: size, viewBox: "0 0 48 48", fill: "none", stroke: "currentColor", strokeWidth: sw, strokeLinecap: "round", strokeLinejoin: "round" };
 
   switch (id) {
-    // Tiles
+    /* Tiles */
     case 'soil_barren':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#4a3a2a" stroke="#2a2218"/><path d="M8 20l4 2M18 22l3-1M28 21l4 1M36 20l4 1M10 28l5 2M22 30l4-1M32 28l5 1" stroke="#2a2218"/></svg>;
+      return <svg width={size} height={size} viewBox={v}>
+        <polygon points={CT} fill="#8e6d48"/>
+        <polygon points={CL} fill="#5a3e26"/>
+        <polygon points={CR} fill="#3e2c1a"/>
+        {/* cracks */}
+        <path d="M17 13l3 5M25 11l2 4" stroke="#3a2810" strokeWidth="0.8" fill="none" strokeOpacity="0.6"/>
+        {/* pebbles */}
+        <ellipse cx="15" cy="19" rx="2.2" ry="1.4" fill="#7a7268"/>
+        <ellipse cx="30" cy="16" rx="1.8" ry="1.1" fill="#a89c8c"/>
+        <ellipse cx="22" cy="22" rx="1.5" ry="0.9" fill="#4e3e2c"/>
+        {/* dry grass */}
+        <path d="M19 14l-1-4M20 14l0-4.5M21 14l1-4" stroke="#b8a040" strokeWidth="0.9" fill="none" strokeOpacity="0.85"/>
+        <path d="M28 20l-1-3.5M29.5 20l0.5-4" stroke="#c0a848" strokeWidth="0.9" fill="none" strokeOpacity="0.85"/>
+      </svg>;
+
     case 'soil_ash':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#5a554c" stroke="#3a3530"/><circle cx="14" cy="22" r="1.5" fill="#3a3530"/><circle cx="28" cy="24" r="1.5" fill="#3a3530"/><circle cx="36" cy="28" r="1.5" fill="#3a3530"/></svg>;
+      return <svg width={size} height={size} viewBox={v}>
+        <polygon points={CT} fill="#706c68"/>
+        <polygon points={CL} fill="#484440"/>
+        <polygon points={CR} fill="#30302e"/>
+        <circle cx="18" cy="14" r="2.5" fill="#484440"/>
+        <circle cx="30" cy="18" r="2.5" fill="#484440"/>
+        <circle cx="23" cy="23" r="1.8" fill="#484440"/>
+      </svg>;
+
     case 'soil_toxic':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#4a5a3a" stroke="#2a3a1c"/><path d="M10 20l4 4 4-2M28 22l3 4 4-3" stroke="#9bcc6a"/></svg>;
+      return <svg width={size} height={size} viewBox={v}>
+        <polygon points={CT} fill="#5a7030"/>
+        <polygon points={CL} fill="#3a4820"/>
+        <polygon points={CR} fill="#263014"/>
+        <path d="M15 13l2 6 3-2M27 11l2 6 3-2" stroke="#9bcc6a" strokeWidth="1" fill="none"/>
+        <circle cx="24" cy="22" r="2.5" fill="#7acc40"/>
+      </svg>;
+
     case 'soil_cracked':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#3e3022" stroke="#1c1410"/><path d="M8 18l6 8 4-2 8 6M30 16l4 10 6-2" stroke="#1c1410" strokeWidth="0.8"/></svg>;
+      return <svg width={size} height={size} viewBox={v}>
+        <polygon points={CT} fill="#5a4028"/>
+        <polygon points={CL} fill="#3a2818"/>
+        <polygon points={CR} fill="#281a0e"/>
+        <path d="M12 11l6 9-2 7M28 9l3 10 5-2" stroke="#281a0e" strokeWidth="0.9" fill="none"/>
+      </svg>;
+
     case 'path_broken':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#6a6258" stroke="#3a3530"/><rect x="8" y="20" width="8" height="4" fill="#8a8276" stroke="none"/><rect x="20" y="22" width="10" height="4" fill="#8a8276" stroke="none"/><rect x="32" y="20" width="8" height="4" fill="#8a8276" stroke="none"/></svg>;
+      return <svg width={size} height={size} viewBox={v}>
+        <polygon points={CT} fill="#8a8278"/>
+        <polygon points={CL} fill="#5a564e"/>
+        <polygon points={CR} fill="#3c3a36"/>
+        <rect x="12" y="10" width="10" height="7" fill="#a09890" rx="0.5"/>
+        <rect x="27" y="13" width="8" height="7" fill="#a09890" rx="0.5"/>
+        <rect x="20" y="19" width="7" height="6" fill="#a09890" rx="0.5"/>
+      </svg>;
+
     case 'water_murky':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#2c4048" stroke="#1a2a30"/><path d="M6 22c4-2 6 2 10 0s6 2 10 0 6 2 10 0M6 28c4-2 6 2 10 0s6 2 10 0 6 2 10 0" stroke="#5b8aa4"/></svg>;
+      return <svg width={size} height={size} viewBox={v}>
+        <polygon points={CT} fill="#2e5268"/>
+        <polygon points={CL} fill="#1c3442"/>
+        <polygon points={CR} fill="#10222c"/>
+        <path d="M10 15c3-2 5 2 8 0s5 2 8 0 5 2 8 0" stroke="#5a90b0" strokeWidth="1.1" fill="none"/>
+        <path d="M12 22c3-2 5 2 8 0s5 2 8 0" stroke="#5a90b0" strokeWidth="1.1" fill="none"/>
+      </svg>;
+
     case 'brick_ruin':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#7a4a36" stroke="#3a1c10"/><path d="M4 22h40M4 28h40M14 14v8M24 22v6M34 28v8M10 28v8" stroke="#3a1c10" strokeWidth="0.6"/></svg>;
-    // Furniture
+      return <svg width={size} height={size} viewBox={v}>
+        <polygon points={CT} fill="#9a5a48"/>
+        <polygon points={CL} fill="#623a2e"/>
+        <polygon points={CR} fill="#42261e"/>
+        <line x1="6" y1="17" x2="42" y2="18" stroke="#623a2e" strokeWidth="0.9"/>
+        <line x1="8" y1="23" x2="40" y2="24" stroke="#623a2e" strokeWidth="0.9"/>
+        <line x1="18" y1="8" x2="13" y2="27" stroke="#623a2e" strokeWidth="0.6"/>
+        <line x1="32" y1="7" x2="27" y2="27" stroke="#623a2e" strokeWidth="0.6"/>
+      </svg>;
+
+    /* Farming — original 2D */
+    case 'field_barren':
+      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#3a2e1e" stroke="#1c1410"/><path d="M4 20h40M4 26h40M4 32h40" stroke="#2a2014"/></svg>;
+    case 'moss_gray':
+      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#4a5240" stroke="#2a3220"/><circle cx="14" cy="24" r="3" fill="#5a6450"/><circle cx="26" cy="28" r="4" fill="#5a6450"/><circle cx="36" cy="22" r="2.5" fill="#5a6450"/></svg>;
+    case 'potato_waste':
+      return <svg {...common}><rect x="4" y="30" width="40" height="6" fill="#3a2e1e" stroke="#1c1410"/><path d="M14 30v-10M24 30v-12M34 30v-9" stroke="#5a6a3a" strokeWidth="2"/><circle cx="14" cy="18" r="3" fill="#5a6a3a"/><circle cx="24" cy="16" r="3.5" fill="#5a6a3a"/><circle cx="34" cy="19" r="3" fill="#5a6a3a"/></svg>;
+
+    /* Furniture — original 2D */
     case 'desk_iron':
       return <svg {...common}><rect x="6" y="20" width="36" height="4" fill="#4a4036" stroke="#2a2218"/><path d="M10 24v18M38 24v18"/><rect x="14" y="14" width="10" height="3" fill="#8a5635" stroke="none"/><rect x="26" y="16" width="8" height="2" fill="#c8b896" stroke="none"/></svg>;
     case 'chair_iron':
@@ -144,21 +233,17 @@ const ItemGlyph = ({ id, size = 36 }) => {
       return <svg {...common}><path d="M24 42V14l-6-4" stroke="#4a4036" strokeWidth="2.4"/><rect x="12" y="6" width="10" height="6" fill="#4a4036" stroke="#2a2218"/><circle cx="17" cy="14" r="3" fill="#ffd49a" stroke="#ffa860"/></svg>;
     case 'drum_oil':
       return <svg {...common}><rect x="14" y="10" width="20" height="30" rx="3" fill="#6a3c28" stroke="#3a1c10"/><path d="M14 18h20M14 30h20" stroke="#3a1c10"/></svg>;
-    // Buildings
+
+    /* Buildings — original 2D */
     case 'shack_scrap':
       return <svg {...common}><path d="M8 30l16-16 16 16v12H8z" fill="#3a2a1c" stroke="#1a140e"/><rect x="20" y="32" width="8" height="10" fill="#1a1410" stroke="none"/></svg>;
     case 'warehouse_rust':
       return <svg {...common}><rect x="6" y="16" width="36" height="26" fill="#6a3c28" stroke="#3a1c10"/><rect x="6" y="14" width="36" height="4" fill="#4a4036" stroke="#2a2218"/><path d="M14 24v18M24 24v18M34 24v18"/></svg>;
-    // Farming
-    case 'field_barren':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#3a2e1e" stroke="#1c1410"/><path d="M4 20h40M4 26h40M4 32h40" stroke="#2a2014"/></svg>;
-    case 'moss_gray':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#4a5240" stroke="#2a3220"/><circle cx="14" cy="24" r="3" fill="#5a6450"/><circle cx="26" cy="28" r="4" fill="#5a6450"/><circle cx="36" cy="22" r="2.5" fill="#5a6450"/></svg>;
-    case 'potato_waste':
-      return <svg {...common}><rect x="4" y="30" width="40" height="6" fill="#3a2e1e" stroke="#1c1410"/><path d="M14 30v-10M24 30v-12M34 30v-9" stroke="#5a6a3a" strokeWidth="2"/><circle cx="14" cy="18" r="3" fill="#5a6a3a"/><circle cx="24" cy="16" r="3.5" fill="#5a6a3a"/><circle cx="34" cy="19" r="3" fill="#5a6a3a"/></svg>;
-    // Ore
+
+    /* Ore — original 2D */
     case 'iron_rust':
       return <svg {...common}><path d="M10 30l8-14 14-2 10 6-6 14-16 4z" fill="#5a3826" stroke="#2a1810"/><path d="M18 16l-2 10 8 8 8-6 4-12" stroke="#3a2418" strokeWidth="0.8"/></svg>;
+
     default:
       return <svg {...common}><rect x="8" y="8" width="32" height="32" rx="2" fill="#3a3028" stroke="#2a2218"/></svg>;
   }
