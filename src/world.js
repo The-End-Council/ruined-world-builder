@@ -129,7 +129,20 @@
   let charYaw = 0;
   let charYawVisual = 0;
   let cameraTarget = { x: 0.5, z: 0.5 }; // looking at scene center
-  let cameraOffset = { dist: 14, height: 9, yaw: -0.55 };
+  const CAMERA_PRESETS = {
+    topdown: { dist: 0.01, height: 22, yaw: 0 },
+    isometric: { dist: 13, height: 10, yaw: -0.78 },
+    soft: { dist: 10, height: 7.2, yaw: -0.62 },
+    perspective: { dist: 14, height: 9, yaw: -0.55 },
+    fp: { dist: 0, height: 1.05, yaw: 0 },
+  };
+  const CAMERA_DEFAULT_FOV = 38;
+  const CAMERA_DEFAULT_NEAR = 0.1;
+  const CAMERA_FP_FOV = 58;
+  const CAMERA_FP_NEAR = 0.02;
+  let cameraMode = 'perspective';
+  let cameraOffset = { ...CAMERA_PRESETS.perspective };
+  let cameraModeChangeHandler = null;
 
   // Keys
   const keys = { w: false, a: false, s: false, d: false };
@@ -410,6 +423,10 @@
     if (k === 'a' || k === 'arrowleft')  keys.a = false;
     if (k === 'd' || k === 'arrowright') keys.d = false;
     if (k === 'escape') {
+      if (cameraMode === 'fp') {
+        setCameraMode('perspective');
+        window.toast?.('Walk表示を終了');
+      }
       setPlacement(null);
     }
   }
@@ -543,12 +560,49 @@
     const yaw = cameraOffset.yaw;
     const dist = cameraOffset.dist;
     const height = cameraOffset.height;
-    camera.position.set(
-      tx + Math.sin(yaw) * dist,
-      height,
-      tz + Math.cos(yaw) * dist
-    );
-    camera.lookAt(tx, 0.5, tz);
+    if (cameraMode === 'fp') {
+      const eyeY = charSitting ? 0.92 : height;
+      const dirX = Math.sin(charYawVisual);
+      const dirZ = Math.cos(charYawVisual);
+      const px = charPosVisual.x + dirX * 0.04;
+      const pz = charPosVisual.z + dirZ * 0.04;
+      camera.up.set(0, 1, 0);
+      camera.position.set(px, eyeY, pz);
+      camera.lookAt(px + dirX * 3, eyeY + 0.12, pz + dirZ * 3);
+      return;
+    }
+    if (cameraMode === 'topdown') {
+      camera.up.set(0, 0, -1);
+      camera.position.set(tx, height, tz + dist);
+      camera.lookAt(tx, 0, tz);
+    } else {
+      camera.up.set(0, 1, 0);
+      camera.position.set(
+        tx + Math.sin(yaw) * dist,
+        height,
+        tz + Math.cos(yaw) * dist
+      );
+      camera.lookAt(tx, 0.5, tz);
+    }
+  }
+
+  function setCameraMode(mode) {
+    if (!CAMERA_PRESETS[mode]) return cameraMode;
+    if (cameraMode === mode) return cameraMode;
+    cameraMode = mode;
+    cameraOffset = { ...CAMERA_PRESETS[mode] };
+    if (camera) {
+      camera.fov = (mode === 'fp') ? CAMERA_FP_FOV : CAMERA_DEFAULT_FOV;
+      camera.near = (mode === 'fp') ? CAMERA_FP_NEAR : CAMERA_DEFAULT_NEAR;
+      camera.updateProjectionMatrix();
+    }
+    updateCameraPos();
+    cameraModeChangeHandler?.(cameraMode);
+    return cameraMode;
+  }
+
+  function toggleTopdown() {
+    return setCameraMode(cameraMode === 'topdown' ? 'perspective' : 'topdown');
   }
 
   // ---------- Character ----------
@@ -1027,6 +1081,10 @@
     init,
     setSitting,
     setPlacement,
+    setCameraMode,
+    toggleTopdown,
+    getCameraMode: () => cameraMode,
+    onCameraModeChange: (fn) => { cameraModeChangeHandler = fn; },
     onPlacementChange: (fn) => { placementChangeHandler = fn; },
     getCharPos: () => ({ x: charPos.x, z: charPos.z }),
     setCharPos: (x, z) => { charPos.x = x; charPos.z = z; },

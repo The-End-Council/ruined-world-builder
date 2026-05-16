@@ -4,8 +4,15 @@
 
 const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
   const s = window.useStore();
+  const [viewOpen, setViewOpen] = React.useState(false);
   const [weatherOpen, setWeatherOpen] = React.useState(false);
   const [musicOpen, setMusicOpen] = React.useState(false);
+  const [cameraMode, setCameraMode] = React.useState(() => window.World?.getCameraMode?.() || 'perspective');
+
+  React.useEffect(() => {
+    window.World?.onCameraModeChange?.((mode) => setCameraMode(mode));
+    setCameraMode(window.World?.getCameraMode?.() || 'perspective');
+  }, []);
 
   return (
     <div className="topbar">
@@ -44,9 +51,40 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
           )}
           <div style={{ position: 'relative' }}>
             <button
+              className={'icon-btn ' + (viewOpen ? 'active' : '')}
+              title="View modes"
+              onClick={() => {
+                setViewOpen(!viewOpen);
+                setWeatherOpen(false);
+                setMusicOpen(false);
+              }}
+            >
+              <window.Icon name="eye" />
+            </button>
+            {viewOpen && (
+              <ViewModePicker
+                current={cameraMode}
+                onPick={(nextMode) => {
+                  const mode = window.World?.setCameraMode?.(nextMode) || cameraMode;
+                  setCameraMode(mode);
+                  setViewOpen(false);
+                  const label = {
+                    topdown: 'Top-down',
+                    isometric: 'Isometric',
+                    soft: 'Soft',
+                    perspective: 'Perspective',
+                    fp: 'Walk (first-person)',
+                  }[mode] || mode;
+                  window.toast?.(label + '表示');
+                }}
+              />
+            )}
+          </div>
+          <div style={{ position: 'relative' }}>
+            <button
               className={'icon-btn ' + (weatherOpen ? 'active' : '')}
               title="天候"
-              onClick={() => { setWeatherOpen(!weatherOpen); setMusicOpen(false); }}
+              onClick={() => { setWeatherOpen(!weatherOpen); setMusicOpen(false); setViewOpen(false); }}
             >
               <window.Icon name="star" />
             </button>
@@ -56,7 +94,7 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
             <button
               className={'icon-btn ' + (musicOpen ? 'active' : '')}
               title="音楽"
-              onClick={() => { setMusicOpen(!musicOpen); setWeatherOpen(false); }}
+              onClick={() => { setMusicOpen(!musicOpen); setWeatherOpen(false); setViewOpen(false); }}
             >
               <window.Icon name="music" />
             </button>
@@ -149,6 +187,34 @@ const DailyCard = ({ state }) => {
           );
         })}
       </div>
+    </div>
+  );
+};
+
+const ViewModePicker = ({ onPick, current }) => {
+  const options = [
+    { key: 'topdown', label: 'Top-down', desc: '俯瞰', icon: 'topdown' },
+    { key: 'isometric', label: 'Isometric', desc: '斜め上', icon: 'isometric' },
+    { key: 'soft', label: 'Soft', desc: '柔らかい遠景', icon: 'soft' },
+    { key: 'perspective', label: 'Perspective', desc: '近距離表示', icon: 'perspective' },
+    { key: 'fp', label: 'Walk (first-person)', desc: 'Escで終了', icon: 'walk' },
+  ];
+  return (
+    <div className="glass" style={{ position: 'absolute', top: 46, right: 0, padding: 8, minWidth: 220, zIndex: 30, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {options.map(o => (
+        <button
+          key={o.key}
+          onClick={() => onPick(o.key)}
+          className={'btn small ' + (current === o.key ? 'primary' : 'ghost')}
+          style={{ justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <window.Icon name={o.icon} size={14} />
+            <span>{o.label}</span>
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-jp)' }}>{o.desc}</span>
+        </button>
+      ))}
     </div>
   );
 };
