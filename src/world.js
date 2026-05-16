@@ -643,6 +643,34 @@
     cameraFocusOverride = { x: centerX, z: centerZ, until: performance.now() + 1200 };
   }
 
+  function centerOnGrid() {
+    const s = window.Store.get();
+    const tiles = s?.world?.tiles || [];
+
+    if (tiles.length === 0) {
+      cameraFocusOverride = { x: 0.5, z: 0.5, until: performance.now() + 1200 };
+      return;
+    }
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    tiles.forEach(t => {
+      if (typeof t.x !== 'number' || typeof t.z !== 'number') return;
+      if (t.x < minX) minX = t.x;
+      if (t.x > maxX) maxX = t.x;
+      if (t.z < minZ) minZ = t.z;
+      if (t.z > maxZ) maxZ = t.z;
+    });
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minZ)) {
+      cameraFocusOverride = { x: 0.5, z: 0.5, until: performance.now() + 1200 };
+      return;
+    }
+
+    const centerX = ((minX + maxX) * 0.5) * TILE;
+    const centerZ = ((minZ + maxZ) * 0.5) * TILE;
+    cameraFocusOverride = { x: centerX, z: centerZ, until: performance.now() + 1200 };
+  }
+
   // ---------- Character ----------
   function buildCharacter(THREE) {
     const g = new THREE.Group();
