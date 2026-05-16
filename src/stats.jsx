@@ -128,7 +128,7 @@ const Chart = ({ data, maxMin }) => {
 
 const RingChart = ({ focus, brk }) => {
   const total = focus + brk;
-  const focusPct = total > 0 ? focus / total : 0.83;
+  const focusPct = total > 0 ? focus / total : 0;
   const size = 160;
   const r = 60;
   const c = 2 * Math.PI * r;

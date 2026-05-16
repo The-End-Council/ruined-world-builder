@@ -80,6 +80,9 @@ const TaskManager = () => {
           <button style={tasksStyles.viewBtn(view === 'table')} onClick={() => setView('table')}>
             <window.Icon name="table" size={13} /> Table
           </button>
+          <button style={tasksStyles.viewBtn(view === 'roadmap')} onClick={() => setView('roadmap')}>
+            <window.Icon name="calendar" size={13} /> Roadmap
+          </button>
         </div>
 
         <select className="select-input" value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}>
@@ -128,7 +131,7 @@ const TaskManager = () => {
             childrenOf={childrenOf}
             setEditingTask={setEditingTask}
           />
-        ) : (
+        ) : view === 'table' ? (
           <TableView
             statuses={statuses}
             labels={labels}
@@ -137,6 +140,14 @@ const TaskManager = () => {
             childrenOf={childrenOf}
             expanded={expanded}
             setExpanded={setExpanded}
+            setEditingTask={setEditingTask}
+          />
+        ) : (
+          <RoadmapView
+            statuses={statuses}
+            labels={labels}
+            tasks={tasks}
+            parentTasks={parentTasks}
             setEditingTask={setEditingTask}
           />
         )}
@@ -311,12 +322,225 @@ const TableRow = ({ task, statuses, labels, children, onClick, hasChildren, expa
   );
 };
 
+/* ---------- Roadmap ---------- */
+const RoadmapView = ({ tasks, parentTasks, statuses, setEditingTask }) => {
+  const today = new Date();
+  const taskDates = parentTasks.flatMap(t => [t.startDate, t.endDate].filter(Boolean)).map(d => new Date(d));
+
+  let rangeStart, rangeEnd;
+  if (taskDates.length) {
+    const minT = Math.min(...taskDates.map(d => d.getTime()));
+    const maxT = Math.max(...taskDates.map(d => d.getTime()));
+    rangeStart = new Date(minT - 14 * 86400000);
+    rangeEnd = new Date(maxT + 14 * 86400000);
+  } else {
+    rangeStart = new Date(today.getTime() - 14 * 86400000);
+    rangeEnd = new Date(today.getTime() + 60 * 86400000);
+  }
+
+  // Snap start to Monday
+  const dow = rangeStart.getDay();
+  rangeStart.setDate(rangeStart.getDate() - (dow === 0 ? 6 : dow - 1));
+
+  const totalDays = Math.ceil((rangeEnd - rangeStart) / 86400000) + 1;
+  const DAY_W = 26;
+  const ROW_H = 44;
+  const LEFT_W = 240;
+  const HEADER_H = 48;
+
+  const dayOffset = (dateStr) => {
+    if (!dateStr) return null;
+    return Math.round((new Date(dateStr) - rangeStart) / 86400000);
+  };
+  const todayOff = Math.round((today - rangeStart) / 86400000);
+
+  // Month segments for header
+  const months = [];
+  let cur = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1);
+  while (cur <= rangeEnd) {
+    const startOff = Math.max(0, Math.round((cur - rangeStart) / 86400000));
+    const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    const endOff = Math.round((next - rangeStart) / 86400000);
+    months.push({ label: cur.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short' }), startOff, endOff });
+    cur = next;
+  }
+
+  const getStatusColor = (t) => statuses.find(s => s.id === t.statusId)?.color || 'var(--dust)';
+
+  const bodyStyle = { display: 'flex', height: '100%', overflow: 'hidden' };
+  const leftHeadStyle = { height: HEADER_H, borderBottom: '1px solid var(--line)', padding: '0 16px', display: 'flex', alignItems: 'center', fontSize: 10, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase', background: 'var(--panel-solid)', position: 'sticky', top: 0, zIndex: 2 };
+  const leftRowStyle = (i) => ({ height: ROW_H, borderBottom: '1px solid var(--line-soft)', padding: '0 14px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 3, cursor: 'pointer', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.012)' });
+
+  return (
+    <div style={bodyStyle}>
+      {/* Left fixed panel */}
+      <div style={{ width: LEFT_W, flexShrink: 0, borderRight: '1px solid var(--line)', overflowY: 'auto' }}>
+        <div style={leftHeadStyle}>タスク / 担当者</div>
+        {parentTasks.length === 0 && (
+          <div style={{ padding: 20, color: 'var(--muted)', fontSize: 12, fontFamily: 'var(--font-jp)', textAlign: 'center' }}>タスクなし — 新規タスクを作成</div>
+        )}
+        {parentTasks.map((t, i) => (
+          <div key={t.id} style={leftRowStyle(i)} onClick={() => setEditingTask(t)}>
+            <div style={{ fontSize: 12, fontFamily: 'var(--font-jp)', color: 'var(--ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+            {t.assignees && t.assignees.length > 0 && (
+              <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                {t.assignees.map((a, j) => (
+                  <span key={j} style={{ fontSize: 9, background: 'var(--bg-rust)', color: 'var(--muted)', padding: '1px 5px', borderRadius: 99, fontFamily: 'var(--font-jp)' }}>{a}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Right scrollable timeline */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <div style={{ width: totalDays * DAY_W, position: 'relative', minHeight: '100%' }}>
+          {/* Month header */}
+          <div style={{ height: HEADER_H, borderBottom: '1px solid var(--line)', position: 'sticky', top: 0, zIndex: 2, background: 'var(--panel-solid)' }}>
+            {months.map((m, i) => (
+              <div key={i} style={{ position: 'absolute', left: m.startOff * DAY_W, width: (m.endOff - m.startOff) * DAY_W, height: '100%', borderRight: '1px solid var(--line)', padding: '0 10px', display: 'flex', alignItems: 'center', fontSize: 10, color: 'var(--muted)', letterSpacing: '0.12em', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                {m.label}
+              </div>
+            ))}
+          </div>
+
+          {/* Today line */}
+          {todayOff >= 0 && todayOff <= totalDays && (
+            <div style={{ position: 'absolute', left: todayOff * DAY_W + DAY_W / 2 - 0.5, top: HEADER_H, bottom: 0, width: 1, background: 'var(--dust)', opacity: 0.6, zIndex: 3, pointerEvents: 'none' }} />
+          )}
+
+          {/* Rows */}
+          {parentTasks.map((t, i) => {
+            const startOff = dayOffset(t.startDate);
+            const endOff = dayOffset(t.endDate);
+            const hasBar = startOff !== null && endOff !== null && endOff >= startOff;
+            const color = getStatusColor(t);
+            return (
+              <div key={t.id} style={{ height: ROW_H, borderBottom: '1px solid var(--line-soft)', position: 'relative', background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.012)' }}>
+                {/* Weekly grid lines */}
+                {Array.from({ length: Math.ceil(totalDays / 7) + 1 }, (_, wi) => (
+                  <div key={wi} style={{ position: 'absolute', left: wi * 7 * DAY_W, top: 0, bottom: 0, width: 1, background: 'var(--line-soft)', opacity: 0.4 }} />
+                ))}
+                {hasBar ? (
+                  <div
+                    style={{ position: 'absolute', left: startOff * DAY_W + 2, width: Math.max(DAY_W, (endOff - startOff + 1) * DAY_W) - 4, top: '50%', transform: 'translateY(-50%)', height: 22, background: color, opacity: 0.85, borderRadius: 4, cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0 8px', overflow: 'hidden' }}
+                    onClick={() => setEditingTask(t)}
+                    title={`${t.startDate} → ${t.endDate}`}
+                  >
+                    <span style={{ fontSize: 10, color: '#fff', fontFamily: 'var(--font-jp)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</span>
+                  </div>
+                ) : (
+                  todayOff >= 0 && (
+                    <div style={{ position: 'absolute', left: todayOff * DAY_W + DAY_W / 2 - 3, top: '50%', transform: 'translateY(-50%)', width: 6, height: 6, borderRadius: 99, background: color, opacity: 0.45 }} />
+                  )
+                )}
+              </div>
+            );
+          })}
+          {parentTasks.length === 0 && (
+            <div style={{ padding: 40, color: 'var(--muted)', fontSize: 12, fontFamily: 'var(--font-jp)', textAlign: 'center' }}>タスクなし</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ---------- Date picker ---------- */
+const DatePicker = ({ value, onChange, placeholder }) => {
+  const [open, setOpen] = React.useState(false);
+  const containerRef = React.useRef(null);
+  const [viewDate, setViewDate] = React.useState(() => {
+    if (value) { const [y, m] = value.split('-').map(Number); return new Date(y, m - 1, 1); }
+    const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1);
+  });
+
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const cells = [];
+  for (let i = 0; i < startOffset; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+  const selectDate = (d) => {
+    onChange(`${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+    setOpen(false);
+  };
+
+  const btnStyle = { background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '2px 8px', fontSize: 12 };
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{ width: '100%', textAlign: 'left', cursor: 'pointer', padding: '8px 12px', border: '1px solid var(--line)', background: 'var(--bg-soil)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-jp)', fontSize: 13, color: 'var(--ink)' }}
+      >
+        <window.Icon name="calendar" size={12} />
+        <span style={{ color: value ? 'var(--ink)' : 'var(--muted)' }}>{value || placeholder || '日付を選択'}</span>
+      </button>
+
+      {open && (
+        <div style={{ position: 'absolute', zIndex: 300, top: 'calc(100% + 4px)', left: 0, background: 'var(--panel-raised)', border: '1px solid var(--line)', borderRadius: 8, padding: 12, width: 220, boxShadow: 'var(--shadow-deep)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <button type="button" style={btnStyle} onClick={() => setViewDate(new Date(year, month - 1, 1))}>◀</button>
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-jp)', color: 'var(--dust)', letterSpacing: '0.1em' }}>{year}年 {month + 1}月</span>
+            <button type="button" style={btnStyle} onClick={() => setViewDate(new Date(year, month + 1, 1))}>▶</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, marginBottom: 4 }}>
+            {['月','火','水','木','金','土','日'].map(d => (
+              <div key={d} style={{ textAlign: 'center', fontSize: 9, color: 'var(--muted)', padding: '2px 0' }}>{d}</div>
+            ))}
+          </div>
+          {weeks.map((week, wi) => (
+            <div key={wi} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1 }}>
+              {week.map((day, di) => {
+                if (!day) return <div key={di} style={{ aspectRatio: '1' }} />;
+                const ds = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                const isSel = value === ds, isTod = today === ds;
+                return (
+                  <button
+                    key={di} type="button" onClick={() => selectDate(day)}
+                    style={{ aspectRatio: '1', border: 'none', borderRadius: 4, cursor: 'pointer', background: isSel ? 'var(--dust)' : isTod ? 'rgba(201,123,74,0.12)' : 'transparent', color: isSel ? '#1a1410' : isTod ? 'var(--dust)' : 'var(--ink-soft)', fontSize: 11, fontFamily: 'var(--font-jp)', outline: isTod && !isSel ? '1px solid rgba(201,123,74,0.4)' : 'none' }}
+                  >{day}</button>
+                );
+              })}
+            </div>
+          ))}
+          {value && (
+            <button
+              type="button" onClick={() => { onChange(null); setOpen(false); }}
+              style={{ marginTop: 8, width: '100%', background: 'none', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 10, fontFamily: 'var(--font-jp)', borderTop: '1px solid var(--line)', paddingTop: 8 }}
+            >クリア</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ---------- Task detail / edit ---------- */
 const TaskDetail = ({ task, onClose, statuses, labels, tasks }) => {
   const isNew = !task;
-  const [draft, setDraft] = React.useState(task || {
-    title: '', note: '', statusId: statuses[0]?.id, labelIds: [], level: 'Normal', rank: 'Medium', parentId: null,
-  });
+  const [draft, setDraft] = React.useState(task
+    ? { assignees: [], startDate: null, endDate: null, ...task }
+    : { title: '', note: '', statusId: statuses[0]?.id, labelIds: [], level: 'Normal', rank: 'Medium', parentId: null, assignees: [], startDate: null, endDate: null }
+  );
   const isChild = !!draft.parentId;
   const childList = !isNew && !isChild ? tasks.filter(t => t.parentId === task.id) : [];
   const doneStatusId = statuses.find(st => /done|完了/i.test(st.name))?.id;
@@ -420,6 +644,25 @@ const TaskDetail = ({ task, onClose, statuses, labels, tasks }) => {
               })}
             </div>
           </Field>
+
+          <Field label="担当者">
+            <input
+              className="text-input"
+              placeholder="担当者（カンマ区切り）"
+              value={(draft.assignees || []).join(', ')}
+              onChange={e => setDraft({ ...draft, assignees: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })}
+              style={{ fontFamily: 'var(--font-jp)' }}
+            />
+          </Field>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Field label="開始日">
+              <DatePicker value={draft.startDate} onChange={d => setDraft({ ...draft, startDate: d })} placeholder="開始日" />
+            </Field>
+            <Field label="終了日">
+              <DatePicker value={draft.endDate} onChange={d => setDraft({ ...draft, endDate: d })} placeholder="終了日" />
+            </Field>
+          </div>
 
           {/* Subtasks */}
           {!isNew && !isChild && (

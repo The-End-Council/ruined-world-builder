@@ -50,11 +50,59 @@ const Settings = () => {
 
       <section style={{ paddingTop: 16, borderTop: '1px solid var(--line)' }}>
         <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: 10 }}>データ</div>
+        <div style={{ display: 'grid', gap: 8, marginBottom: 10 }}>
+          <button
+            className="btn ghost"
+            onClick={async () => {
+              if (!window.gameConfirm) return;
+              const ok = await window.gameConfirm({
+                title: 'Reset world',
+                message: '世界を初期レイアウト（4タイル+机+椅子）に戻します。\nDUSTは維持され、現在の配置物はインベントリへ戻ります。実行しますか？',
+                confirmText: '実行',
+                cancelText: 'キャンセル',
+                danger: true,
+              });
+              if (ok) {
+                window.Store.resetWorldToStarter();
+                window.toast('世界を初期レイアウトに戻しました', 'success');
+              }
+            }}
+          >
+            <window.Icon name="reset" size={12} /> Reset world（初期世界）
+          </button>
+          <button
+            className="btn ghost"
+            onClick={async () => {
+              if (!window.gameConfirm) return;
+              const ok = await window.gameConfirm({
+                title: 'Clear to grass',
+                message: 'タイル上の家具・建物・農業・鉱石を回収してインベントリに戻します。\nDUSTは維持されます。実行しますか？',
+                confirmText: '回収する',
+                cancelText: 'キャンセル',
+                danger: true,
+              });
+              if (ok) {
+                window.Store.clearToGrass();
+                window.toast('配置物を回収しました', 'success');
+              }
+            }}
+          >
+            <window.Icon name="trash" size={12} /> Clear to grass（配置物を回収）
+          </button>
+        </div>
         <button
           className="btn ghost"
           style={{ color: 'var(--rank-critical)', borderColor: 'rgba(166,74,58,0.4)' }}
-          onClick={() => {
-            if (confirm('全データをリセットしますか？この操作は取り消せません。')) {
+          onClick={async () => {
+            if (!window.gameConfirm) return;
+            const ok = await window.gameConfirm({
+              title: '全データ初期化',
+              message: '全データをリセットします。この操作は取り消せません。実行しますか？',
+              confirmText: '初期化',
+              cancelText: 'キャンセル',
+              danger: true,
+            });
+            if (ok) {
               window.Store.reset();
               window.toast('リセット完了', 'success');
             }

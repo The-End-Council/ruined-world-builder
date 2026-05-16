@@ -142,7 +142,7 @@ const TimerModal = ({ onClose }) => {
   const t = window.useTimer();
   const cfg = s.timer;
 
-  const setWork = (v) => window.Store.setTimerConfig({ workMin: Math.max(1, Math.min(120, v)) });
+  const setWork = (v) => window.Store.setTimerConfig({ workMin: Math.max(1, Math.min(600, v)) });
   const setBreak = (v) => window.Store.setTimerConfig({ breakMin: Math.max(1, Math.min(60, v)) });
   const setCycles = (v) => window.Store.setTimerConfig({ cycles: Math.max(1, Math.min(10, v)) });
 
@@ -170,7 +170,7 @@ const TimerModal = ({ onClose }) => {
           <div style={timerStyles.topRow}>
             {/* Dial */}
             <div style={timerStyles.dialWrap}>
-              <TimerDial minutes={cfg.workMin} onChange={setWork} label="作業" max={90} />
+              <TimerDial minutes={cfg.workMin} onChange={setWork} label="作業" max={60} />
               <div style={{ fontSize: 11, color: 'var(--muted)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                 作業時間 — ドラッグで調整
               </div>
@@ -243,33 +243,58 @@ const TimerModal = ({ onClose }) => {
 };
 
 /* ---------- Dial ---------- */
-const TimerDial = ({ minutes, onChange, label, max = 90 }) => {
+const TimerDial = ({ minutes, onChange, label, max = 60 }) => {
   const ref = React.useRef(null);
   const [dragging, setDragging] = React.useState(false);
-  const size = 200;
-  const radius = 80;
-  const stroke = 8;
+  const prevA = React.useRef(null);
+  const totalRad = React.useRef(0);
+
+  const size = 200, radius = 80, stroke = 8;
   const cx = size / 2, cy = size / 2;
 
-  const angle = (minutes / max) * Math.PI * 2 - Math.PI / 2;
+  const rem = minutes % max;
+  const displayMin = (rem === 0 && minutes > 0) ? max : rem;
+  const angle = (displayMin / max) * Math.PI * 2 - Math.PI / 2;
   const knobX = cx + Math.cos(angle) * radius;
   const knobY = cy + Math.sin(angle) * radius;
 
-  const handlePoint = (e) => {
+  const calcA = (e) => {
     const rect = ref.current.getBoundingClientRect();
     const x = (e.clientX || e.touches?.[0]?.clientX) - rect.left - cx;
     const y = (e.clientY || e.touches?.[0]?.clientY) - rect.top - cy;
     let a = Math.atan2(y, x) + Math.PI / 2;
     if (a < 0) a += Math.PI * 2;
-    const pct = a / (Math.PI * 2);
-    const m = Math.max(1, Math.min(max, Math.round(pct * max)));
-    onChange(m);
+    return a;
+  };
+
+  const startDrag = (e) => {
+    const a = calcA(e);
+    const lapBase = Math.floor((minutes - 1) / max) * max;
+    const clickMin = Math.max(1, Math.round((a / (Math.PI * 2)) * max));
+    const snapped = Math.min(600, lapBase + clickMin);
+    totalRad.current = (snapped / max) * Math.PI * 2;
+    prevA.current = a;
+    setDragging(true);
+    onChange(snapped);
+  };
+
+  const handlePoint = (e) => {
+    if (prevA.current === null) return;
+    const a = calcA(e);
+    let diff = a - prevA.current;
+    if (diff > Math.PI) diff -= Math.PI * 2;
+    else if (diff < -Math.PI) diff += Math.PI * 2;
+    const minRad = (1 / max) * Math.PI * 2;
+    const maxRad = (600 / max) * Math.PI * 2;
+    totalRad.current = Math.max(minRad, Math.min(maxRad, totalRad.current + diff));
+    prevA.current = a;
+    onChange(Math.max(1, Math.min(600, Math.round(totalRad.current / (Math.PI * 2) * max))));
   };
 
   React.useEffect(() => {
     if (!dragging) return;
     const move = (e) => handlePoint(e);
-    const up = () => setDragging(false);
+    const up = () => { setDragging(false); prevA.current = null; };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
     window.addEventListener('touchmove', move);
@@ -282,10 +307,11 @@ const TimerDial = ({ minutes, onChange, label, max = 90 }) => {
     };
   }, [dragging]);
 
-  // SVG path arc for current
-  const arcEnd = angle;
+  // Arc (clamp displayMin < max to avoid coincident SVG arc endpoints)
   const arcStart = -Math.PI / 2;
-  const largeArc = (minutes / max) > 0.5 ? 1 : 0;
+  const arcMin = displayMin >= max ? max - 0.01 : displayMin;
+  const arcEnd = (arcMin / max) * Math.PI * 2 - Math.PI / 2;
+  const largeArc = (arcMin / max) > 0.5 ? 1 : 0;
   const ex = cx + Math.cos(arcEnd) * radius;
   const ey = cy + Math.sin(arcEnd) * radius;
   const sx = cx + Math.cos(arcStart) * radius;
@@ -304,30 +330,26 @@ const TimerDial = ({ minutes, onChange, label, max = 90 }) => {
     });
   }
 
+  const revolution = Math.ceil(minutes / max);
+
   return (
     <svg
       ref={ref}
       width={size}
       height={size}
-      onMouseDown={(e) => { setDragging(true); handlePoint(e); }}
-      onTouchStart={(e) => { setDragging(true); handlePoint(e); }}
+      onMouseDown={startDrag}
+      onTouchStart={startDrag}
       style={{ cursor: dragging ? 'grabbing' : 'grab', userSelect: 'none', touchAction: 'none' }}
     >
-      {/* tick marks */}
       {ticks.map((t, i) => (
         <line key={i} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2}
               stroke={t.major ? 'var(--muted)' : 'var(--muted-deep)'}
               strokeWidth={t.major ? 1.5 : 0.8} />
       ))}
-      {/* base ring */}
       <circle cx={cx} cy={cy} r={radius} fill="none" stroke="var(--line)" strokeWidth={stroke} />
-      {/* progress arc */}
       <path
         d={`M ${sx} ${sy} A ${radius} ${radius} 0 ${largeArc} 1 ${ex} ${ey}`}
-        fill="none"
-        stroke="url(#dialGrad)"
-        strokeWidth={stroke}
-        strokeLinecap="round"
+        fill="none" stroke="url(#dialGrad)" strokeWidth={stroke} strokeLinecap="round"
       />
       <defs>
         <linearGradient id="dialGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -335,15 +357,18 @@ const TimerDial = ({ minutes, onChange, label, max = 90 }) => {
           <stop offset="100%" stopColor="#a04826" />
         </linearGradient>
       </defs>
-      {/* knob */}
       <circle cx={knobX} cy={knobY} r={9} fill="#c97b4a" stroke="#1a1410" strokeWidth={2} />
-      {/* center labels */}
       <text x={cx} y={cy - 4} textAnchor="middle" fill="var(--ink)" fontSize="36" fontFamily="var(--font-jp)" fontWeight="300">
         {minutes}
       </text>
       <text x={cx} y={cy + 22} textAnchor="middle" fill="var(--muted)" fontSize="11" letterSpacing="0.2em">
         MIN
       </text>
+      {minutes > max && (
+        <text x={cx} y={cy + 42} textAnchor="middle" fill="var(--dust)" fontSize="10" letterSpacing="0.15em">
+          ×{revolution}周
+        </text>
+      )}
     </svg>
   );
 };

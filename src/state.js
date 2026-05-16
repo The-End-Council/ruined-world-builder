@@ -4,6 +4,8 @@
 
 (function () {
   const STORAGE_KEY = 'world-builder-v1';
+  const SAVE_SLOTS_KEY = 'world-builder-save-slots-v1';
+  const ACTIVE_SAVE_KEY = 'world-builder-active-save-v1';
   const TIME_TO_WEATHER = {
     morning: 'morning',
     noon: 'noon',
@@ -13,6 +15,18 @@
   };
   const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
   const WEATHER_MODES = ['clear', 'cloudy', 'rain', 'storm', 'snow'];
+  const SPECIAL_WEATHERS = ['night_starry', 'seabed', 'collapse', 'blood_moon'];
+  const WORLD_CATEGORIES = ['tile', 'furniture', 'building', 'farming', 'ore', 'items'];
+  const STARTER_TILES = [
+    { x: 0, z: 0, type: 'soil_ash' },
+    { x: 1, z: 0, type: 'soil_ash', item: 'desk_iron',  itemCategory: 'furniture', itemRotation: 0 },
+    { x: 0, z: 1, type: 'soil_ash' },
+    { x: 1, z: 1, type: 'soil_ash', item: 'chair_iron', itemCategory: 'furniture', itemRotation: 2 },
+  ];
+  const STARTER_TILE_KEYS = new Set(STARTER_TILES.map(t => `${t.x},${t.z}`));
+  function isStarterTileProtected(x, z) {
+    return STARTER_TILE_KEYS.has(`${x},${z}`);
+  }
 
   // ---------- Catalog ----------
   const CATALOG = {
@@ -45,6 +59,13 @@
     ore: [
       { id: 'iron_rust',    name: '錆鉄',         kind: '鉄',   price: 1, harvestMin: 30 },
     ],
+    items: [
+      { id: 'iron_scrap',   name: '鉄くず',       kind: '素材', price: null },
+      { id: 'stone_rubble', name: '石くず',       kind: '素材', price: null },
+      { id: 'wood_rotten',  name: '腐った木材',   kind: '素材', price: null },
+      { id: 'herb_dry',     name: '乾いた草',     kind: '植物', price: null },
+      { id: 'dust_shard',   name: '塵の欠片',     kind: '素材', price: null },
+    ],
   };
 
   // Build map id -> item
@@ -56,7 +77,7 @@
   // ---------- Defaults ----------
   function defaultState() {
     return {
-      version: 1,
+      version: 4,
       currency: { dust: 12 },
       character: {
         name: '白群',          // White-haired girl
@@ -68,21 +89,17 @@
       world: {
         // 4 starting tiles (corners around origin), with one having a desk and another a chair
         // Coordinates: tiles indexed as { x, z, type, item? }
-        tiles: [
-          { x:  0, z:  0, type: 'soil_barren', item: 'desk_iron' },
-          { x:  1, z:  0, type: 'soil_barren', item: 'chair_iron' },
-          { x:  0, z:  1, type: 'soil_ash' },
-          { x:  1, z:  1, type: 'soil_ash' },
-        ],
-        weather: 'night_starry', // default = beautiful starry night
-        timeOfDay: 'night',
-        hour: 21,
+        tiles: STARTER_TILES.map(t => ({ ...t })),
+        weather: 'morning',
+        timeOfDay: 'morning',
+        hour: 6,
         season: 'spring',
         weatherMode: 'clear',
-        homeAnchor: { x: 0, z: 0 }, // desk position
+        specialWeather: null,
+        homeAnchor: { x: 0, z: 0 },
+        spawnTile: { x: 0, z: 0 },
       },
       inventory: {
-        // counts by item id
         tile: { soil_barren: 2, soil_ash: 1 },
         furniture: { desk_iron: 0, chair_iron: 0 },
         building: {},
@@ -113,6 +130,9 @@
             level: 'Hard',
             rank: 'High',
             parentId: null,
+            assignees: ['白群'],
+            startDate: '2026-05-01',
+            endDate: '2026-05-31',
             createdAt: Date.now() - 86400e3,
             updatedAt: Date.now() - 3600e3,
           },
@@ -152,6 +172,9 @@
             level: 'Normal',
             rank: 'Medium',
             parentId: null,
+            assignees: [],
+            startDate: '2026-05-20',
+            endDate: '2026-05-27',
             createdAt: Date.now() - 7200e3, updatedAt: Date.now() - 3600e3,
           },
           {
@@ -171,6 +194,9 @@
             labelIds: ['l_idea', 'l_work'],
             level: 'Expert', rank: 'Critical',
             parentId: null,
+            assignees: ['白群'],
+            startDate: '2026-05-10',
+            endDate: '2026-06-30',
             createdAt: Date.now() - 200000e3, updatedAt: Date.now() - 1200e3,
           },
           {
@@ -192,29 +218,26 @@
         musicTrack: 0, // 0..N
       },
       stats: {
-        sessions: 4,
-        focusSeconds: 4 * 25 * 60,  // total focus seconds
-        breakSeconds: 3 * 5 * 60,   // total break seconds
-        // last 14 days of focus (in minutes) for the chart
+        sessions: 0,
+        focusSeconds: 0,
+        breakSeconds: 0,
         daily: (() => {
           const arr = [];
           for (let i = 13; i >= 0; i--) {
             const d = new Date(); d.setDate(d.getDate() - i);
-            const minutes = [0, 25, 0, 50, 30, 75, 0, 100, 0, 25, 60, 45, 0, 50][13 - i] || 0;
-            arr.push({ date: d.toISOString().slice(0,10), minutes });
+            arr.push({ date: d.toISOString().slice(0,10), minutes: 0 });
           }
           return arr;
         })(),
       },
       daily: {
-        // 7 days streak
-        claimed: [true, true, true, false, false, false, false],
-        today: 3, // index of today
-        lastClaimDate: new Date(Date.now() - 86400e3 * 1).toISOString().slice(0,10),
+        claimed: [false, false, false, false, false, false, false],
+        today: 0,
+        lastClaimDate: null,
       },
       missions: [
         { id: 'm1', text: '集中セッションを1回完了する', reward: 3, done: false, type: 'session' },
-        { id: 'm2', text: '15分以上の作業を達成する',     reward: 2, done: true,  type: 'focus' },
+        { id: 'm2', text: '15分以上の作業を達成する',     reward: 2, done: false, type: 'focus' },
         { id: 'm3', text: 'タスクを1つDoneに移動する',    reward: 2, done: false, type: 'task' },
         { id: 'm4', text: 'タイルを1つ配置する',          reward: 1, done: false, type: 'place' },
       ],
@@ -251,27 +274,100 @@
     return 21;
   }
 
+  function cloneStateSnapshot(src) {
+    return JSON.parse(JSON.stringify(src));
+  }
+
+  function readSaveSlotsRaw() {
+    try {
+      const raw = localStorage.getItem(SAVE_SLOTS_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeSaveSlotsRaw(list) {
+    try {
+      localStorage.setItem(SAVE_SLOTS_KEY, JSON.stringify(Array.isArray(list) ? list : []));
+    } catch (e) {
+      console.warn('save slots write failed', e);
+    }
+  }
+
+  function getActiveSaveId() {
+    try {
+      return localStorage.getItem(ACTIVE_SAVE_KEY) || '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function setActiveSaveId(id) {
+    try {
+      if (!id) localStorage.removeItem(ACTIVE_SAVE_KEY);
+      else localStorage.setItem(ACTIVE_SAVE_KEY, id);
+    } catch (e) {}
+  }
+
+  function hydrateState(parsed, { bootResetTime = false } = {}) {
+    const fallback = defaultState();
+    if (!parsed || parsed.version !== 4 || !parsed.world) return fallback;
+
+    const next = cloneStateSnapshot(parsed);
+    next.version = 4;
+
+    next.currency = { ...(fallback.currency || {}), ...(next.currency || {}) };
+    next.character = { ...(fallback.character || {}), ...(next.character || {}) };
+    next.character.position = { ...(fallback.character.position || { x: 0, z: 0 }), ...(next.character.position || {}) };
+
+    next.world = { ...(fallback.world || {}), ...(next.world || {}) };
+    next.world.tiles = Array.isArray(next.world.tiles) && next.world.tiles.length
+      ? next.world.tiles.map(t => ({ ...t }))
+      : STARTER_TILES.map(t => ({ ...t }));
+    if (!next.world.timeOfDay) {
+      next.world.timeOfDay = inferTimeOfDayFromWeather(next.world.weather);
+    }
+    if (typeof next.world.hour !== 'number') {
+      next.world.hour = hourFromTimeOfDay(next.world.timeOfDay);
+    }
+    if (!SEASONS.includes(next.world.season)) next.world.season = 'spring';
+    if (!WEATHER_MODES.includes(next.world.weatherMode)) next.world.weatherMode = 'clear';
+    if (next.world.specialWeather !== null && !SPECIAL_WEATHERS.includes(next.world.specialWeather)) {
+      next.world.specialWeather = null;
+    }
+    if (!next.world.spawnTile) next.world.spawnTile = { x: 0, z: 0 };
+
+    next.inventory = ensureInventoryShape(next.inventory);
+    next.tasks = next.tasks || fallback.tasks;
+    next.timer = { ...(fallback.timer || {}), ...(next.timer || {}) };
+    next.stats = next.stats || fallback.stats;
+    next.daily = next.daily || fallback.daily;
+    next.missions = Array.isArray(next.missions) ? next.missions : fallback.missions;
+    next.settings = { ...(fallback.settings || {}), ...(next.settings || {}) };
+
+    if (bootResetTime) {
+      next.world.timeOfDay = 'morning';
+      next.world.hour = 6;
+      next.world.weather = 'morning';
+      next.world.specialWeather = null;
+      const freeTile = (next.world.tiles || []).find(t => !t.item);
+      next.character.position = freeTile
+        ? { x: freeTile.x, z: freeTile.z }
+        : { ...(fallback.character.position || { x: 0, z: 0 }) };
+    }
+
+    return next;
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return defaultState();
       const parsed = JSON.parse(raw);
-      // basic version check
-      if (!parsed || parsed.version !== 1) return defaultState();
-      if (!parsed.world) return defaultState();
-      if (!parsed.world.timeOfDay) {
-        parsed.world.timeOfDay = inferTimeOfDayFromWeather(parsed.world.weather);
-      }
-      if (typeof parsed.world.hour !== 'number') {
-        parsed.world.hour = hourFromTimeOfDay(parsed.world.timeOfDay);
-      }
-      if (!SEASONS.includes(parsed.world.season)) {
-        parsed.world.season = 'spring';
-      }
-      if (!WEATHER_MODES.includes(parsed.world.weatherMode)) {
-        parsed.world.weatherMode = 'clear';
-      }
-      return parsed;
+      return hydrateState(parsed, { bootResetTime: true });
     } catch (e) {
       console.warn('state load failed', e);
       return defaultState();
@@ -282,6 +378,70 @@
     catch (e) { console.warn('state save failed', e); }
   }
 
+  function syncActiveSaveSnapshot(currentState) {
+    const activeId = getActiveSaveId();
+    if (!activeId) return;
+    const list = readSaveSlotsRaw();
+    const idx = list.findIndex(s => s && s.id === activeId);
+    if (idx < 0) return;
+    list[idx] = {
+      ...list[idx],
+      ts: Date.now(),
+      state: cloneStateSnapshot(currentState),
+    };
+    writeSaveSlotsRaw(list);
+  }
+
+  function listWorldSaves() {
+    const activeId = getActiveSaveId();
+    return readSaveSlotsRaw()
+      .map(s => ({
+        id: s.id,
+        name: s.name || 'Untitled world',
+        ts: s.ts || 0,
+        active: s.id === activeId,
+      }))
+      .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  }
+
+  function saveWorldSave(name) {
+    const list = readSaveSlotsRaw();
+    const safeName = (name || '').trim() || ('World ' + (list.length + 1));
+    const id = 'ws_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+    const slot = {
+      id,
+      name: safeName,
+      ts: Date.now(),
+      state: cloneStateSnapshot(state),
+    };
+    list.unshift(slot);
+    writeSaveSlotsRaw(list.slice(0, 50));
+    setActiveSaveId(id);
+    return { id, name: safeName, ts: slot.ts };
+  }
+
+  function loadWorldSave(id) {
+    if (!id) return false;
+    const list = readSaveSlotsRaw();
+    const slot = list.find(s => s && s.id === id);
+    if (!slot || !slot.state) return false;
+    state = hydrateState(slot.state, { bootResetTime: false });
+    save(state);
+    setActiveSaveId(id);
+    listeners.forEach(fn => fn(state));
+    return true;
+  }
+
+  function deleteWorldSave(id) {
+    if (!id) return false;
+    const list = readSaveSlotsRaw();
+    const next = list.filter(s => s && s.id !== id);
+    if (next.length === list.length) return false;
+    writeSaveSlotsRaw(next);
+    if (getActiveSaveId() === id) setActiveSaveId('');
+    return true;
+  }
+
   // ---------- Store ----------
   const listeners = new Set();
   let state = load();
@@ -290,6 +450,7 @@
   function set(updater) {
     state = (typeof updater === 'function') ? updater(state) : updater;
     save(state);
+    syncActiveSaveSnapshot(state);
     listeners.forEach(fn => fn(state));
   }
   function subscribe(fn) {
@@ -299,7 +460,45 @@
   function reset() {
     state = defaultState();
     save(state);
+    syncActiveSaveSnapshot(state);
     listeners.forEach(fn => fn(state));
+  }
+
+  function ensureInventoryShape(inv) {
+    const next = { ...(inv || {}) };
+    WORLD_CATEGORIES.forEach(cat => {
+      next[cat] = { ...(next[cat] || {}) };
+    });
+    next.items = { ...(next.items || {}) };
+    return next;
+  }
+
+  function addInventoryCount(inv, category, id, amount = 1) {
+    if (!category || !id || !Number.isFinite(amount) || amount <= 0) return;
+    if (!inv[category]) inv[category] = {};
+    inv[category][id] = (inv[category][id] || 0) + amount;
+  }
+
+  function takeInventoryCount(inv, category, id, amount = 1) {
+    if (!category || !id || !Number.isFinite(amount) || amount <= 0) return;
+    if (!inv[category]) inv[category] = {};
+    const curr = inv[category][id] || 0;
+    inv[category][id] = Math.max(0, curr - amount);
+  }
+
+  function returnWorldToInventory(inv, tiles, includeTiles = false) {
+    (tiles || []).forEach(t => {
+      if (includeTiles) addInventoryCount(inv, 'tile', t.type, 1);
+      const itemCategory = t.itemCategory || (t.item ? CATALOG_MAP[t.item]?.category : null);
+      if (t.item && itemCategory) addInventoryCount(inv, itemCategory, t.item, 1);
+    });
+  }
+
+  function consumeStarterFromInventory(inv) {
+    STARTER_TILES.forEach(t => {
+      takeInventoryCount(inv, 'tile', t.type, 1);
+      if (t.item && t.itemCategory) takeInventoryCount(inv, t.itemCategory, t.item, 1);
+    });
   }
 
   // ---------- Helpers ----------
@@ -329,20 +528,26 @@
   }
 
   // Place a tile or item on a coordinate. type = 'tile' | 'furniture' | 'building' | 'farming' | 'ore'
-  function placeAt(category, id, x, z) {
+  function placeAt(category, id, x, z, rotation = 0) {
     set(s => {
       const tiles = [...s.world.tiles];
       const idx = tiles.findIndex(t => t.x === x && t.z === z);
       let placed = false;
       if (category === 'tile') {
+        // Adjacency required: must be next to an existing tile (not diagonal)
+        const adjacent = tiles.some(t =>
+          (Math.abs(t.x - x) === 1 && t.z === z) ||
+          (t.x === x && Math.abs(t.z - z) === 1)
+        );
+        if (!adjacent && tiles.length > 0) return s;
         if (idx >= 0) tiles[idx] = { ...tiles[idx], type: id };
-        else tiles.push({ x, z, type: id });
+        else tiles.push({ x, z, type: id, itemRotation: 0 });
         placed = true;
       } else {
         // need a tile underneath
-        if (idx < 0) return s; // can't place an object on nothing
-        if (tiles[idx].item) return s; // occupied
-        tiles[idx] = { ...tiles[idx], item: id, itemCategory: category };
+        if (idx < 0) return s;
+        if (tiles[idx].item) return s;
+        tiles[idx] = { ...tiles[idx], item: id, itemCategory: category, itemRotation: rotation };
         placed = true;
       }
       if (!placed) return s;
@@ -385,6 +590,7 @@
         timeOfDay,
         hour,
         weather: TIME_TO_WEATHER[timeOfDay],
+        specialWeather: null,
       },
     }));
   }
@@ -399,6 +605,7 @@
         hour: h,
         timeOfDay,
         weather: TIME_TO_WEATHER[timeOfDay],
+        specialWeather: null,
       },
     }));
   }
@@ -411,6 +618,114 @@
   function setWeatherMode(weatherMode) {
     if (!WEATHER_MODES.includes(weatherMode)) return;
     set(s => ({ ...s, world: { ...s.world, weatherMode } }));
+  }
+
+  function setSpecialWeather(key) {
+    const next = (key && SPECIAL_WEATHERS.includes(key)) ? key : null;
+    set(s => ({ ...s, world: { ...s.world, specialWeather: next } }));
+  }
+
+  function resetWorldToStarter() {
+    set(s => {
+      const inv = ensureInventoryShape(s.inventory);
+      returnWorldToInventory(inv, s.world.tiles, true);
+      consumeStarterFromInventory(inv);
+
+      const starterTiles = STARTER_TILES.map(t => ({ ...t }));
+      return {
+        ...s,
+        world: {
+          ...s.world,
+          tiles: starterTiles,
+          homeAnchor: { x: 0, z: 0 },
+          spawnTile: { x: 0, z: 0 },
+        },
+        character: {
+          ...s.character,
+          position: { x: 0, z: 0 },
+        },
+        inventory: inv,
+      };
+    });
+  }
+
+  function clearToGrass() {
+    set(s => {
+      const inv = ensureInventoryShape(s.inventory);
+      returnWorldToInventory(inv, s.world.tiles, false);
+      const tiles = s.world.tiles.map(t => {
+        const { item, itemCategory, itemRotation, ...rest } = t;
+        return { ...rest };
+      });
+      return { ...s, world: { ...s.world, tiles }, inventory: inv };
+    });
+  }
+
+  function removeAt(x, z) {
+    let result = { ok: false, reason: 'empty' };
+    set(s => {
+      const tiles = [...s.world.tiles];
+      const idx = tiles.findIndex(t => t.x === x && t.z === z);
+      if (idx < 0) return s;
+
+      const tile = tiles[idx];
+      const inv = ensureInventoryShape(s.inventory);
+
+      if (tile.item) {
+        const itemId = tile.item;
+        const itemCategory = tile.itemCategory || CATALOG_MAP[itemId]?.category || null;
+        if (itemCategory) addInventoryCount(inv, itemCategory, itemId, 1);
+        const { item, itemCategory: _, itemRotation, ...rest } = tile;
+        tiles[idx] = { ...rest };
+        result = {
+          ok: true,
+          kind: 'item',
+          id: itemId,
+          category: itemCategory,
+          name: CATALOG_MAP[itemId]?.name || itemId,
+        };
+        return { ...s, world: { ...s.world, tiles }, inventory: inv };
+      }
+
+      if (isStarterTileProtected(tile.x, tile.z)) {
+        result = { ok: false, reason: 'protected_tile' };
+        return s;
+      }
+
+      if (tiles.length <= 1) {
+        result = { ok: false, reason: 'last_tile' };
+        return s;
+      }
+
+      const tileId = tile.type;
+      addInventoryCount(inv, 'tile', tileId, 1);
+      tiles.splice(idx, 1);
+
+      const oldSpawn = s.world.spawnTile || { x: 0, z: 0 };
+      const spawnStillExists = tiles.some(t => t.x === oldSpawn.x && t.z === oldSpawn.z);
+      const fallbackSpawnTile = tiles.find(t => !t.item) || tiles[0] || oldSpawn;
+      const nextSpawn = spawnStillExists ? oldSpawn : { x: fallbackSpawnTile.x, z: fallbackSpawnTile.z };
+
+      const charPos = s.character.position || { x: 0, z: 0 };
+      const roundedChar = { x: Math.round(charPos.x), z: Math.round(charPos.z) };
+      const charOnAnyTile = tiles.some(t => t.x === roundedChar.x && t.z === roundedChar.z);
+      const nextCharPos = charOnAnyTile ? charPos : { x: nextSpawn.x, z: nextSpawn.z };
+
+      result = {
+        ok: true,
+        kind: 'tile',
+        id: tileId,
+        category: 'tile',
+        name: CATALOG_MAP[tileId]?.name || tileId,
+      };
+      return {
+        ...s,
+        world: { ...s.world, tiles, spawnTile: nextSpawn },
+        character: { ...s.character, position: nextCharPos },
+        inventory: inv,
+      };
+    });
+    return result;
   }
 
   // ---------- Task helpers ----------
@@ -426,6 +741,9 @@
       level: partial.level || 'Normal',
       rank: partial.rank || 'Medium',
       parentId: partial.parentId || null,
+      assignees: partial.assignees || [],
+      startDate: partial.startDate || null,
+      endDate: partial.endDate || null,
       createdAt: now,
       updatedAt: now,
     };
@@ -575,7 +893,10 @@
   window.Store = {
     get, set, subscribe, reset,
     CATALOG, CATALOG_MAP,
-    addDust, spendDust, buyItem, placeAt, setWeather, setTimeOfDay, setHour, setSeason, setWeatherMode,
+    addDust, spendDust, buyItem, placeAt, removeAt, setWeather, setTimeOfDay, setHour, setSeason, setWeatherMode, setSpecialWeather,
+    resetWorldToStarter, clearToGrass,
+    isStarterTileProtected,
+    listWorldSaves, saveWorldSave, loadWorldSave, deleteWorldSave, getActiveSaveId,
     addTask, updateTask, deleteTask,
     addStatus, updateStatus, deleteStatus,
     addLabel, updateLabel, deleteLabel,
