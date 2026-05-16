@@ -643,18 +643,6 @@
     cameraFocusOverride = { x: centerX, z: centerZ, until: performance.now() + 1200 };
   }
 
-  function setCameraMode(mode) {
-    if (!CAMERA_PRESETS[mode]) return cameraMode;
-    cameraMode = mode;
-    cameraOffset = { ...CAMERA_PRESETS[mode] };
-    updateCameraPos();
-    return cameraMode;
-  }
-
-  function toggleIsometric() {
-    return setCameraMode(cameraMode === 'isometric' ? 'perspective' : 'isometric');
-  }
-
   // ---------- Character ----------
   function buildCharacter(THREE) {
     const g = new THREE.Group();
