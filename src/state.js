@@ -4,6 +4,15 @@
 
 (function () {
   const STORAGE_KEY = 'world-builder-v1';
+  const TIME_TO_WEATHER = {
+    morning: 'morning',
+    noon: 'noon',
+    evening: 'evening',
+    night: 'night',
+    deep_night: 'deep_night',
+  };
+  const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
+  const WEATHER_MODES = ['clear', 'cloudy', 'rain', 'storm', 'snow'];
 
   // ---------- Catalog ----------
   const CATALOG = {
@@ -66,6 +75,10 @@
           { x:  1, z:  1, type: 'soil_ash' },
         ],
         weather: 'night_starry', // default = beautiful starry night
+        timeOfDay: 'night',
+        hour: 21,
+        season: 'spring',
+        weatherMode: 'clear',
         homeAnchor: { x: 0, z: 0 }, // desk position
       },
       inventory: {
@@ -213,6 +226,31 @@
   }
 
   // ---------- Load / save ----------
+  function inferTimeOfDayFromWeather(weather) {
+    if (weather === 'morning') return 'morning';
+    if (weather === 'noon') return 'noon';
+    if (weather === 'evening') return 'evening';
+    if (weather === 'deep_night') return 'deep_night';
+    return 'night';
+  }
+
+  function timeOfDayFromHour(hour) {
+    const h = Math.max(0, Math.min(23, Number(hour) || 0));
+    if (h >= 5 && h < 10) return 'morning';
+    if (h >= 10 && h < 16) return 'noon';
+    if (h >= 16 && h < 19) return 'evening';
+    if (h >= 19 || h < 1) return 'night';
+    return 'deep_night';
+  }
+
+  function hourFromTimeOfDay(timeOfDay) {
+    if (timeOfDay === 'morning') return 7;
+    if (timeOfDay === 'noon') return 12;
+    if (timeOfDay === 'evening') return 17;
+    if (timeOfDay === 'deep_night') return 2;
+    return 21;
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -220,6 +258,19 @@
       const parsed = JSON.parse(raw);
       // basic version check
       if (!parsed || parsed.version !== 1) return defaultState();
+      if (!parsed.world) return defaultState();
+      if (!parsed.world.timeOfDay) {
+        parsed.world.timeOfDay = inferTimeOfDayFromWeather(parsed.world.weather);
+      }
+      if (typeof parsed.world.hour !== 'number') {
+        parsed.world.hour = hourFromTimeOfDay(parsed.world.timeOfDay);
+      }
+      if (!SEASONS.includes(parsed.world.season)) {
+        parsed.world.season = 'spring';
+      }
+      if (!WEATHER_MODES.includes(parsed.world.weatherMode)) {
+        parsed.world.weatherMode = 'clear';
+      }
       return parsed;
     } catch (e) {
       console.warn('state load failed', e);
@@ -314,7 +365,52 @@
   }
 
   function setWeather(w) {
-    set(s => ({ ...s, world: { ...s.world, weather: w } }));
+    set(s => {
+      const nextTime =
+        (w === 'morning' || w === 'noon' || w === 'evening' || w === 'night' || w === 'deep_night')
+          ? w
+          : s.world.timeOfDay;
+      const nextHour = hourFromTimeOfDay(nextTime);
+      return { ...s, world: { ...s.world, weather: w, timeOfDay: nextTime, hour: nextHour } };
+    });
+  }
+
+  function setTimeOfDay(timeOfDay) {
+    if (!TIME_TO_WEATHER[timeOfDay]) return;
+    const hour = hourFromTimeOfDay(timeOfDay);
+    set(s => ({
+      ...s,
+      world: {
+        ...s.world,
+        timeOfDay,
+        hour,
+        weather: TIME_TO_WEATHER[timeOfDay],
+      },
+    }));
+  }
+
+  function setHour(hour) {
+    const h = Math.max(0, Math.min(23, Math.round(Number(hour) || 0)));
+    const timeOfDay = timeOfDayFromHour(h);
+    set(s => ({
+      ...s,
+      world: {
+        ...s.world,
+        hour: h,
+        timeOfDay,
+        weather: TIME_TO_WEATHER[timeOfDay],
+      },
+    }));
+  }
+
+  function setSeason(season) {
+    if (!SEASONS.includes(season)) return;
+    set(s => ({ ...s, world: { ...s.world, season } }));
+  }
+
+  function setWeatherMode(weatherMode) {
+    if (!WEATHER_MODES.includes(weatherMode)) return;
+    set(s => ({ ...s, world: { ...s.world, weatherMode } }));
   }
 
   // ---------- Task helpers ----------
@@ -479,7 +575,7 @@
   window.Store = {
     get, set, subscribe, reset,
     CATALOG, CATALOG_MAP,
-    addDust, spendDust, buyItem, placeAt, setWeather,
+    addDust, spendDust, buyItem, placeAt, setWeather, setTimeOfDay, setHour, setSeason, setWeatherMode,
     addTask, updateTask, deleteTask,
     addStatus, updateStatus, deleteStatus,
     addLabel, updateLabel, deleteLabel,

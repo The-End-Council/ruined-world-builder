@@ -214,6 +214,22 @@ const ViewModePicker = ({ onPick, current }) => {
     { key: 'perspective', label: 'Perspective', desc: '近距離表示', icon: 'perspective' },
     { key: 'fp', label: 'Walk (first-person)', desc: 'Escで終了', icon: 'walk' },
   ];
+  const seasonOptions = [
+    { key: 'spring', label: '春' },
+    { key: 'summer', label: '夏' },
+    { key: 'autumn', label: '秋' },
+    { key: 'winter', label: '冬' },
+  ];
+  const weatherOptions = [
+    { key: 'clear', label: 'Clear' },
+    { key: 'cloudy', label: 'Cloudy' },
+    { key: 'rain', label: 'Rain' },
+    { key: 'storm', label: 'Storm' },
+    { key: 'snow', label: 'Snow' },
+  ];
+  const hour = state.world.hour ?? 21;
+  const hourLabel = String(hour).padStart(2, '0') + ':00';
+
   return (
     <div className="glass" style={{ position: 'absolute', top: 46, right: 0, padding: 8, minWidth: 220, zIndex: 30, display: 'flex', flexDirection: 'column', gap: 4 }}>
       {options.map(o => (
