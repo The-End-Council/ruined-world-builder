@@ -59,6 +59,16 @@ const Icon = ({ name, size = 18 }) => {
       return <svg {...common}><rect x="3" y="4" width="5" height="14" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="7" rx="1"/></svg>;
     case 'table':
       return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 10h18M3 16h18M10 4v16"/></svg>;
+    case 'topdown':
+      return <svg {...common}><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8v8H8z"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>;
+    case 'isometric':
+      return <svg {...common}><path d="M12 3l8 4.5-8 4.5-8-4.5z"/><path d="M4 7.5V16l8 5 8-5V7.5"/><path d="M12 12v9"/></svg>;
+    case 'soft':
+      return <svg {...common}><path d="M12 5l7 4-7 4-7-4z"/><path d="M5 9v5l7 4 7-4V9"/><path d="M4 17l8 4 8-4" opacity="0.7"/></svg>;
+    case 'perspective':
+      return <svg {...common}><path d="M3 8l9-4 9 4v8l-9 4-9-4z"/><path d="M3 8l9 4 9-4"/><path d="M12 12v8"/></svg>;
+    case 'walk':
+      return <svg {...common}><circle cx="12" cy="5.5" r="2"/><path d="M12 7.5v5l3 2"/><path d="M12 12.5l-3 4"/><path d="M12 12.5l2 5"/><path d="M9 16.5l-3 3"/><path d="M14 17.5l3 3"/></svg>;
     case 'menu':
       return <svg {...common}><circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/></svg>;
     default: return null;

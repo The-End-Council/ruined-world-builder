@@ -4,8 +4,15 @@
 
 const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
   const s = window.useStore();
+  const [viewOpen, setViewOpen] = React.useState(false);
   const [timeWeatherOpen, setTimeWeatherOpen] = React.useState(false);
   const [musicOpen, setMusicOpen] = React.useState(false);
+  const [cameraMode, setCameraMode] = React.useState(() => window.World?.getCameraMode?.() || 'perspective');
+
+  React.useEffect(() => {
+    window.World?.onCameraModeChange?.((mode) => setCameraMode(mode));
+    setCameraMode(window.World?.getCameraMode?.() || 'perspective');
+  }, []);
 
   return (
     <div className="topbar">
@@ -42,11 +49,52 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
               <window.Icon name={viewMode === 'fullscreen' ? 'eye' : 'fullscreen'} />
             </button>
           )}
+          <button
+            className="icon-btn"
+            title="Center on your grid"
+            onClick={() => {
+              window.World?.centerOnGrid?.();
+              window.toast?.('グリッド中央へ移動');
+            }}
+          >
+            <window.Icon name="home" />
+          </button>
+          <div style={{ position: 'relative' }}>
+            <button
+              className={'icon-btn ' + (viewOpen ? 'active' : '')}
+              title="View modes"
+              onClick={() => {
+                setViewOpen(!viewOpen);
+                setTimeWeatherOpen(false);
+                setMusicOpen(false);
+              }}
+            >
+              <window.Icon name="eye" />
+            </button>
+            {viewOpen && (
+              <ViewModePicker
+                current={cameraMode}
+                onPick={(nextMode) => {
+                  const mode = window.World?.setCameraMode?.(nextMode) || cameraMode;
+                  setCameraMode(mode);
+                  setViewOpen(false);
+                  const label = {
+                    topdown: 'Top-down',
+                    isometric: 'Isometric',
+                    soft: 'Soft',
+                    perspective: 'Perspective',
+                    fp: 'Walk (first-person)',
+                  }[mode] || mode;
+                  window.toast?.(label + '表示');
+                }}
+              />
+            )}
+          </div>
           <div style={{ position: 'relative' }}>
             <button
               className={'icon-btn ' + (timeWeatherOpen ? 'active' : '')}
               title="Time & weather"
-              onClick={() => { setTimeWeatherOpen(!timeWeatherOpen); setMusicOpen(false); }}
+              onClick={() => { setTimeWeatherOpen(!timeWeatherOpen); setMusicOpen(false); setViewOpen(false); }}
             >
               <window.Icon name="sun" />
             </button>
@@ -61,7 +109,7 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
             <button
               className={'icon-btn ' + (musicOpen ? 'active' : '')}
               title="音楽"
-              onClick={() => { setMusicOpen(!musicOpen); setTimeWeatherOpen(false); }}
+              onClick={() => { setMusicOpen(!musicOpen); setTimeWeatherOpen(false); setViewOpen(false); }}
             >
               <window.Icon name="music" />
             </button>
@@ -154,6 +202,50 @@ const DailyCard = ({ state }) => {
           );
         })}
       </div>
+    </div>
+  );
+};
+
+const ViewModePicker = ({ onPick, current }) => {
+  const options = [
+    { key: 'topdown', label: 'Top-down', desc: '俯瞰', icon: 'topdown' },
+    { key: 'isometric', label: 'Isometric', desc: '斜め上', icon: 'isometric' },
+    { key: 'soft', label: 'Soft', desc: '柔らかい遠景', icon: 'soft' },
+    { key: 'perspective', label: 'Perspective', desc: '近距離表示', icon: 'perspective' },
+    { key: 'fp', label: 'Walk (first-person)', desc: 'Escで終了', icon: 'walk' },
+  ];
+  const seasonOptions = [
+    { key: 'spring', label: '春' },
+    { key: 'summer', label: '夏' },
+    { key: 'autumn', label: '秋' },
+    { key: 'winter', label: '冬' },
+  ];
+  const weatherOptions = [
+    { key: 'clear', label: 'Clear' },
+    { key: 'cloudy', label: 'Cloudy' },
+    { key: 'rain', label: 'Rain' },
+    { key: 'storm', label: 'Storm' },
+    { key: 'snow', label: 'Snow' },
+  ];
+  const hour = state.world.hour ?? 21;
+  const hourLabel = String(hour).padStart(2, '0') + ':00';
+
+  return (
+    <div className="glass" style={{ position: 'absolute', top: 46, right: 0, padding: 8, minWidth: 220, zIndex: 30, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      {options.map(o => (
+        <button
+          key={o.key}
+          onClick={() => onPick(o.key)}
+          className={'btn small ' + (current === o.key ? 'primary' : 'ghost')}
+          style={{ justifyContent: 'space-between', alignItems: 'center' }}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <window.Icon name={o.icon} size={14} />
+            <span>{o.label}</span>
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-jp)' }}>{o.desc}</span>
+        </button>
+      ))}
     </div>
   );
 };
