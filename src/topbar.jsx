@@ -5,7 +5,7 @@
 const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
   const s = window.useStore();
   const [viewOpen, setViewOpen] = React.useState(false);
-  const [weatherOpen, setWeatherOpen] = React.useState(false);
+  const [timeWeatherOpen, setTimeWeatherOpen] = React.useState(false);
   const [musicOpen, setMusicOpen] = React.useState(false);
   const [cameraMode, setCameraMode] = React.useState(() => window.World?.getCameraMode?.() || 'perspective');
 
@@ -49,13 +49,23 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
               <window.Icon name={viewMode === 'fullscreen' ? 'eye' : 'fullscreen'} />
             </button>
           )}
+          <button
+            className="icon-btn"
+            title="Center on your grid"
+            onClick={() => {
+              window.World?.centerOnGrid?.();
+              window.toast?.('グリッド中央へ移動');
+            }}
+          >
+            <window.Icon name="home" />
+          </button>
           <div style={{ position: 'relative' }}>
             <button
               className={'icon-btn ' + (viewOpen ? 'active' : '')}
               title="View modes"
               onClick={() => {
                 setViewOpen(!viewOpen);
-                setWeatherOpen(false);
+                setTimeWeatherOpen(false);
                 setMusicOpen(false);
               }}
             >
@@ -82,19 +92,24 @@ const TopBar = ({ openModal, timerActive, viewMode, setViewMode }) => {
           </div>
           <div style={{ position: 'relative' }}>
             <button
-              className={'icon-btn ' + (weatherOpen ? 'active' : '')}
-              title="天候"
-              onClick={() => { setWeatherOpen(!weatherOpen); setMusicOpen(false); setViewOpen(false); }}
+              className={'icon-btn ' + (timeWeatherOpen ? 'active' : '')}
+              title="Time & weather"
+              onClick={() => { setTimeWeatherOpen(!timeWeatherOpen); setMusicOpen(false); setViewOpen(false); }}
             >
-              <window.Icon name="star" />
+              <window.Icon name="sun" />
             </button>
-            {weatherOpen && <WeatherPicker onPick={(k) => { window.Store.setWeather(k); setWeatherOpen(false); }} current={s.world.weather} />}
+            {timeWeatherOpen && (
+              <TimeWeatherPicker
+                state={s}
+                onClose={() => setTimeWeatherOpen(false)}
+              />
+            )}
           </div>
           <div style={{ position: 'relative' }}>
             <button
               className={'icon-btn ' + (musicOpen ? 'active' : '')}
               title="音楽"
-              onClick={() => { setMusicOpen(!musicOpen); setWeatherOpen(false); setViewOpen(false); }}
+              onClick={() => { setMusicOpen(!musicOpen); setTimeWeatherOpen(false); setViewOpen(false); }}
             >
               <window.Icon name="music" />
             </button>
@@ -219,29 +234,93 @@ const ViewModePicker = ({ onPick, current }) => {
   );
 };
 
-const WeatherPicker = ({ onPick, current }) => {
-  const options = [
-    { key: 'morning',      label: '朝' },
-    { key: 'noon',         label: '昼' },
-    { key: 'evening',      label: '夕方' },
-    { key: 'night',        label: '夜' },
-    { key: 'deep_night',   label: '深夜' },
-    { key: 'night_starry', label: '星空' },
-    { key: 'seabed',       label: '海底' },
-    { key: 'collapse',     label: '崩壊' },
+const TimeWeatherPicker = ({ state, onClose }) => {
+  const todOptions = [
+    { key: 'morning', label: '朝' },
+    { key: 'noon', label: '昼' },
+    { key: 'evening', label: '夕方' },
+    { key: 'night', label: '夜' },
+    { key: 'deep_night', label: '深夜' },
   ];
+  const seasonOptions = [
+    { key: 'spring', label: '春' },
+    { key: 'summer', label: '夏' },
+    { key: 'autumn', label: '秋' },
+    { key: 'winter', label: '冬' },
+  ];
+  const weatherOptions = [
+    { key: 'clear', label: 'Clear' },
+    { key: 'cloudy', label: 'Cloudy' },
+    { key: 'rain', label: 'Rain' },
+    { key: 'storm', label: 'Storm' },
+    { key: 'snow', label: 'Snow' },
+  ];
+  const hour = state.world.hour ?? 21;
+  const hourLabel = String(hour).padStart(2, '0') + ':00';
+
   return (
-    <div className="glass" style={{ position: 'absolute', top: 46, right: 0, padding: 8, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4, minWidth: 200, zIndex: 30 }}>
-      {options.map(o => (
-        <button
-          key={o.key}
-          onClick={() => onPick(o.key)}
-          className={'btn small ' + (current === o.key ? 'primary' : 'ghost')}
-          style={{ justifyContent: 'center' }}
-        >
-          {o.label}
-        </button>
-      ))}
+    <div className="glass" style={{ position: 'absolute', top: 46, right: 0, padding: 10, minWidth: 260, zIndex: 30, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-jp)' }}>
+        <span>Time & weather</span>
+        <span>{hourLabel}</span>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-jp)' }}>Time of day</span>
+        <input
+          type="range"
+          min="0"
+          max="23"
+          value={hour}
+          onChange={(e) => window.Store.setHour(Number(e.target.value))}
+        />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
+          {todOptions.map(o => (
+            <button
+              key={o.key}
+              onClick={() => window.Store.setTimeOfDay(o.key)}
+              className={'btn small ' + ((state.world.timeOfDay || 'night') === o.key ? 'primary' : 'ghost')}
+              style={{ justifyContent: 'center', paddingLeft: 0, paddingRight: 0 }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-jp)' }}>Season</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
+          {seasonOptions.map(o => (
+            <button
+              key={o.key}
+              onClick={() => window.Store.setSeason(o.key)}
+              className={'btn small ' + ((state.world.season || 'spring') === o.key ? 'primary' : 'ghost')}
+              style={{ justifyContent: 'center', paddingLeft: 0, paddingRight: 0 }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-jp)' }}>Weather</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
+          {weatherOptions.map(o => (
+            <button
+              key={o.key}
+              onClick={() => window.Store.setWeatherMode(o.key)}
+              className={'btn small ' + ((state.world.weatherMode || 'clear') === o.key ? 'primary' : 'ghost')}
+              style={{ justifyContent: 'center', paddingLeft: 0, paddingRight: 0 }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <button className="btn small ghost" onClick={onClose}>閉じる</button>
     </div>
   );
 };

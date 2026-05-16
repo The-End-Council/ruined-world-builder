@@ -119,6 +119,9 @@
   // Internal state cache
   let tilesCache = []; // last rendered tiles list for diffing
   let weatherKey = null;
+  let timeOfDayKey = null;
+  let seasonKey = null;
+  let weatherModeKey = null;
   let raf = null;
   let placement = null; // { category, id } when in placement mode
   let placementGhost = null;
@@ -143,6 +146,7 @@
   let cameraMode = 'perspective';
   let cameraOffset = { ...CAMERA_PRESETS.perspective };
   let cameraModeChangeHandler = null;
+  let cameraFocusOverride = null;
 
   // Keys
   const keys = { w: false, a: false, s: false, d: false };
@@ -372,9 +376,15 @@
         stars.material.uniforms.time.value = waterTime;
       }
 
-      // Camera follows character softly
-      cameraTarget.x += ((charPosVisual.x) - cameraTarget.x) * 0.04;
-      cameraTarget.z += ((charPosVisual.z) - cameraTarget.z) * 0.04;
+      // Camera follows character softly unless a temporary focus target is active.
+      if (cameraFocusOverride && now < cameraFocusOverride.until) {
+        cameraTarget.x += (cameraFocusOverride.x - cameraTarget.x) * 0.09;
+        cameraTarget.z += (cameraFocusOverride.z - cameraTarget.z) * 0.09;
+      } else {
+        cameraFocusOverride = null;
+        cameraTarget.x += ((charPosVisual.x) - cameraTarget.x) * 0.04;
+        cameraTarget.z += ((charPosVisual.z) - cameraTarget.z) * 0.04;
+      }
       updateCameraPos();
 
       // Pinpoint light follows
@@ -605,6 +615,34 @@
     return setCameraMode(cameraMode === 'topdown' ? 'perspective' : 'topdown');
   }
 
+  function centerOnGrid() {
+    const s = window.Store.get();
+    const tiles = s?.world?.tiles || [];
+
+    if (tiles.length === 0) {
+      cameraFocusOverride = { x: 0.5, z: 0.5, until: performance.now() + 1200 };
+      return;
+    }
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    tiles.forEach(t => {
+      if (typeof t.x !== 'number' || typeof t.z !== 'number') return;
+      if (t.x < minX) minX = t.x;
+      if (t.x > maxX) maxX = t.x;
+      if (t.z < minZ) minZ = t.z;
+      if (t.z > maxZ) maxZ = t.z;
+    });
+
+    if (!Number.isFinite(minX) || !Number.isFinite(minZ)) {
+      cameraFocusOverride = { x: 0.5, z: 0.5, until: performance.now() + 1200 };
+      return;
+    }
+
+    const centerX = ((minX + maxX) * 0.5) * TILE;
+    const centerZ = ((minZ + maxZ) * 0.5) * TILE;
+    cameraFocusOverride = { x: centerX, z: centerZ, until: performance.now() + 1200 };
+  }
+
   // ---------- Character ----------
   function buildCharacter(THREE) {
     const g = new THREE.Group();
@@ -740,9 +778,20 @@
 
   // ---------- Sync from store ----------
   function syncFromStore(state) {
-    // Weather
-    if (state.world.weather !== weatherKey) {
-      applyWeather(state.world.weather);
+    // Time / season / weather mode
+    const nextTimeOfDay = state.world.timeOfDay || state.world.weather || 'night';
+    const nextSeason = state.world.season || 'spring';
+    const nextWeatherMode = state.world.weatherMode || 'clear';
+    if (
+      nextTimeOfDay !== timeOfDayKey
+      || nextSeason !== seasonKey
+      || nextWeatherMode !== weatherModeKey
+      || state.world.weather !== weatherKey
+    ) {
+      applyWeather(nextTimeOfDay, nextSeason, nextWeatherMode);
+      timeOfDayKey = nextTimeOfDay;
+      seasonKey = nextSeason;
+      weatherModeKey = nextWeatherMode;
       weatherKey = state.world.weather;
     }
 
@@ -1015,41 +1064,83 @@
   }
 
   // ---------- Weather ----------
-  function applyWeather(key) {
+  function mixHex(THREE, a, b, t) {
+    const clamped = Math.max(0, Math.min(1, t));
+    const c = new THREE.Color(a);
+    c.lerp(new THREE.Color(b), clamped);
+    return c.getHex();
+  }
+
+  function applyWeather(timeOfDay, season = 'spring', weatherMode = 'clear') {
     const THREE = window.THREE;
-    const w = WEATHER[key] || WEATHER.night_starry;
+    const key = WEATHER[timeOfDay] ? timeOfDay : 'night';
+    const w = WEATHER[key] || WEATHER.night;
+
+    const SEASON = {
+      spring: { tint: 0xb9d99b, sky: 0.06, ground: 0.08, fog: 0.002 },
+      summer: { tint: 0xe0cb93, sky: 0.04, ground: 0.06, fog: -0.003 },
+      autumn: { tint: 0xd79a67, sky: 0.09, ground: 0.12, fog: 0.006 },
+      winter: { tint: 0xc2d9ee, sky: 0.11, ground: 0.18, fog: 0.01 },
+    };
+    const MODE = {
+      clear:  { tint: 0xffffff, sky: 0.00, fog: 0.000, sun: 1.00, ambient: 1.00, star: 1.00, groundSnow: 0.00 },
+      cloudy: { tint: 0x95a0ad, sky: 0.24, fog: 0.014, sun: 0.62, ambient: 0.95, star: 0.25, groundSnow: 0.00 },
+      rain:   { tint: 0x74889b, sky: 0.34, fog: 0.024, sun: 0.45, ambient: 0.90, star: 0.00, groundSnow: 0.00 },
+      storm:  { tint: 0x5d6d83, sky: 0.45, fog: 0.038, sun: 0.28, ambient: 0.84, star: 0.00, groundSnow: 0.00 },
+      snow:   { tint: 0xd1e0f0, sky: 0.30, fog: 0.026, sun: 0.55, ambient: 1.04, star: 0.00, groundSnow: 0.26 },
+    };
+    const s = SEASON[season] || SEASON.spring;
+    const m = MODE[weatherMode] || MODE.clear;
+
+    let skyTop = mixHex(THREE, w.sky[0], s.tint, s.sky);
+    let skyMid = mixHex(THREE, w.sky[1], s.tint, s.sky * 0.7);
+    let skyBot = mixHex(THREE, w.sky[2], s.tint, s.sky * 0.5);
+    skyTop = mixHex(THREE, skyTop, m.tint, m.sky);
+    skyMid = mixHex(THREE, skyMid, m.tint, m.sky * 0.8);
+    skyBot = mixHex(THREE, skyBot, m.tint, m.sky * 0.7);
+
+    let fogColor = mixHex(THREE, w.fog[0], s.tint, s.sky * 0.65);
+    fogColor = mixHex(THREE, fogColor, m.tint, m.sky * 0.7);
+    const fogDensity = Math.max(0.005, w.fog[1] + s.fog + m.fog);
+
+    const sunColor = mixHex(THREE, w.sun[0], m.tint, m.sky * 0.3);
+    const sunIntensity = Math.max(0.05, w.sun[1] * m.sun);
+    const ambientColor = mixHex(THREE, w.ambient[0], s.tint, s.sky * 0.5);
+    const ambientIntensity = Math.max(0.1, w.ambient[1] * m.ambient);
+    const groundColor = mixHex(THREE, mixHex(THREE, w.ground, s.tint, s.ground), 0xe5edf4, m.groundSnow);
 
     // Sky
     if (skyMesh && skyMesh.material.uniforms) {
-      skyMesh.material.uniforms.topColor.value.setHex(w.sky[0]);
-      skyMesh.material.uniforms.midColor.value.setHex(w.sky[1]);
-      skyMesh.material.uniforms.bottomColor.value.setHex(w.sky[2]);
+      skyMesh.material.uniforms.topColor.value.setHex(skyTop);
+      skyMesh.material.uniforms.midColor.value.setHex(skyMid);
+      skyMesh.material.uniforms.bottomColor.value.setHex(skyBot);
     }
     // Fog
     if (scene.fog) {
-      scene.fog.color.setHex(w.fog[0]);
-      scene.fog.density = w.fog[1];
+      scene.fog.color.setHex(fogColor);
+      scene.fog.density = fogDensity;
     }
-    scene.background = new THREE.Color(w.fog[0]);
+    scene.background = new THREE.Color(fogColor);
     // Sun
     if (sunLight) {
-      sunLight.color.setHex(w.sun[0]);
-      sunLight.intensity = w.sun[1];
+      sunLight.color.setHex(sunColor);
+      sunLight.intensity = sunIntensity;
       sunLight.position.set(w.sun[2][0], w.sun[2][1], w.sun[2][2]);
     }
     // Ambient
     if (ambientLight) {
-      ambientLight.color.setHex(w.ambient[0]);
-      ambientLight.intensity = w.ambient[1];
+      ambientLight.color.setHex(ambientColor);
+      ambientLight.intensity = ambientIntensity;
     }
     // Stars
     if (stars && stars.material.uniforms) {
-      stars.material.uniforms.opacity.value = w.star;
+      const starOpacity = Math.max(0, Math.min(1, w.star * m.star));
+      stars.material.uniforms.opacity.value = starOpacity;
       stars.material.uniforms.tint.value.setHex(key === 'night_starry' ? 0xe8e8ff : 0xa0b8d0);
     }
     // Ground
     const ground = scene.userData.ground;
-    if (ground) ground.material.color.setHex(w.ground);
+    if (ground) ground.material.color.setHex(groundColor);
 
     // Black sun visible only for 'collapse'
     if (blackSun) {
@@ -1057,21 +1148,18 @@
       blackSun.userData.halo.material.opacity = (key === 'collapse') ? 0.5 : 0.0;
     }
 
-    // Seabed — slight cyan tint and "underwater" via fog density
-    // Already handled by fog/sky.
-
     // Adjust hemi
     if (hemiLight) {
       if (w.mood === 'star') {
-        hemiLight.color.setHex(0x9ab8e0); hemiLight.intensity = 0.5;
+        hemiLight.color.setHex(mixHex(THREE, 0x9ab8e0, s.tint, 0.18)); hemiLight.intensity = 0.5;
       } else if (w.mood === 'abyss') {
-        hemiLight.color.setHex(0x60b0c0); hemiLight.intensity = 0.7;
+        hemiLight.color.setHex(mixHex(THREE, 0x60b0c0, s.tint, 0.14)); hemiLight.intensity = 0.7;
       } else if (w.mood === 'warm' || w.mood === 'red') {
-        hemiLight.color.setHex(0xe8a070); hemiLight.intensity = 0.5;
+        hemiLight.color.setHex(mixHex(THREE, 0xe8a070, s.tint, 0.2)); hemiLight.intensity = 0.5;
       } else if (w.mood === 'void') {
         hemiLight.color.setHex(0x301812); hemiLight.intensity = 0.3;
       } else {
-        hemiLight.color.setHex(0x6080a0); hemiLight.intensity = 0.4;
+        hemiLight.color.setHex(mixHex(THREE, 0x6080a0, s.tint, 0.16)); hemiLight.intensity = 0.4;
       }
     }
   }
@@ -1083,6 +1171,7 @@
     setPlacement,
     setCameraMode,
     toggleTopdown,
+    centerOnGrid,
     getCameraMode: () => cameraMode,
     onCameraModeChange: (fn) => { cameraModeChangeHandler = fn; },
     onPlacementChange: (fn) => { placementChangeHandler = fn; },
