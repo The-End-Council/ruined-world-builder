@@ -108,12 +108,12 @@
   // ---------- Tile materials ----------
   const TILE_MATERIALS = {
     soil_barren:  { color: 0x8e6d48, rough: 0.93 },
-    soil_ash:     { color: 0x5a554c, rough: 0.95 },
-    soil_toxic:   { color: 0x4a5a3a, rough: 0.9 },
-    soil_cracked: { color: 0x3e3022, rough: 0.95 },
-    path_broken:  { color: 0x6a6258, rough: 0.85 },
-    water_murky:  { color: 0x2c4048, rough: 0.3, transmission: 0.4 },
-    brick_ruin:   { color: 0x7a4a36, rough: 0.85 },
+    soil_ash:     { color: 0x8f887d, rough: 0.88 },
+    soil_toxic:   { color: 0x5f6f55, rough: 0.92 },
+    soil_cracked: { color: 0x6a5a48, rough: 0.93 },
+    path_broken:  { color: 0x615c56, rough: 0.9 },
+    water_murky:  { color: 0x4b6468, rough: 0.34, transmission: 0.35 },
+    brick_ruin:   { color: 0x855a4a, rough: 0.88 },
     field_barren: { color: 0x3a2e1e, rough: 0.95 },
     moss_gray:    { color: 0x4a5240, rough: 0.95 },
   };
@@ -125,6 +125,8 @@
   let stars;
   let tileGroup, itemGroup;
   let charGroup, charBody, charHairFront, charSitting = false;
+  let _promptVec = null;  // THREE.Vector3, allocated once in init()
+  let _promptPrev = null; // last value sent to React, avoids re-render when unchanged
   let pinpointLight; // light over character
   let blackSun;      // for collapse weather
   let bloodMoon;     // for blood_moon weather
@@ -132,6 +134,7 @@
 
   // Internal state cache
   let tilesCache = []; // last rendered tiles list for diffing
+  let chairTiles = []; // cached chair_iron positions, updated when tiles change
   let weatherKey = null;
   let timeOfDayKey = null;
   let seasonKey = null;
@@ -181,7 +184,7 @@
   let removeModeChangeHandler = null;
 
   // Keys
-  const keys = { w: false, a: false, s: false, d: false };
+  const keys = { w: false, a: false, s: false, d: false, shift: false };
 
   function init(rootEl) {
     const THREE = window.THREE;
@@ -202,6 +205,7 @@
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rootEl.appendChild(renderer.domElement);
 
+    _promptVec = new THREE.Vector3();
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x080604);
     scene.fog = new THREE.FogExp2(0x080604, 0.05);
@@ -374,9 +378,31 @@
     itemGroup = new THREE.Group();
     scene.add(itemGroup);
 
-    // Character
-    charGroup = buildCharacter(THREE);
+    // Character — build immediately with fallback colors, then rebuild with skin textures
+    charGroup = buildCharacter(THREE, null, null);
     scene.add(charGroup);
+    {
+      const loaded = {};
+      const loader = new THREE.TextureLoader();
+      const tryRebuild = () => {
+        if (!loaded.face || !loaded.outfit) return;
+        scene.remove(charGroup);
+        charGroup = buildCharacter(THREE, loaded.face, loaded.outfit);
+        scene.add(charGroup);
+      };
+      loader.load('skin/face/1.png', (tex) => {
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        loaded.face = tex;
+        tryRebuild();
+      });
+      loader.load('skin/outfit/1.png', (tex) => {
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        loaded.outfit = tex;
+        tryRebuild();
+      });
+    }
 
     // Initial render
     syncFromStore(window.Store.get());
@@ -407,11 +433,59 @@
       charYawVisual += yawDiff * lerp;
       charGroup.rotation.y = charYawVisual;
 
-      // Walk bob
+      // Interaction prompt (chair) — uses cached chairTiles, no Store.get() per frame
+      if (_promptVec && window.setInteractionPrompt) {
+        const _onChair = !charSitting && chairTiles.some(t =>
+          Math.abs(charPos.x - t.x * TILE) < TILE / 2 &&
+          Math.abs(charPos.z - t.z * TILE) < TILE / 2
+        );
+        const _show = _onChair || charSitting;
+        if (_show) {
+          _promptVec.set(charGroup.position.x, charGroup.position.y + 1.05, charGroup.position.z);
+          _promptVec.project(camera);
+          if (_promptVec.z < 1) {
+            const _c = renderer.domElement;
+            const _sx = Math.round((_promptVec.x *  0.5 + 0.5) * _c.clientWidth);
+            const _sy = Math.round((_promptVec.y * -0.5 + 0.5) * _c.clientHeight);
+            const _label = charSitting ? '立つ' : '座る';
+            // Only update React state when values actually change
+            if (!_promptPrev || _promptPrev.x !== _sx || _promptPrev.y !== _sy || _promptPrev.label !== _label) {
+              _promptPrev = { key: 'E', label: _label, x: _sx, y: _sy };
+              window.setInteractionPrompt(_promptPrev);
+            }
+          }
+        } else if (_promptPrev !== null) {
+          _promptPrev = null;
+          window.setInteractionPrompt(null);
+        }
+      }
+
+      // Walk / run animation
       const moving = keys.w || keys.a || keys.s || keys.d;
-      if (charBody && !charSitting) {
-        const bobY = moving ? Math.sin(now * 0.012) * 0.05 : 0;
-        charBody.position.y = 0.42 + bobY;
+      const running = moving && keys.shift;
+      if (charGroup && !charSitting) {
+        const parts = charGroup.userData.parts;
+        if (moving) {
+          const freq = running ? 0.022 : 0.012;
+          const amp  = running ? 0.70  : 0.50;
+          const swing = Math.sin(now * freq) * amp;
+          const bobY  = Math.abs(Math.sin(now * freq)) * 0.03;
+          if (charBody) charBody.position.y = 0.504 + bobY;
+          if (parts) {
+            if (parts.legL) parts.legL.rotation.x =  swing;
+            if (parts.legR) parts.legR.rotation.x = -swing;
+            if (parts.armL) parts.armL.rotation.x = -swing;
+            if (parts.armR) parts.armR.rotation.x =  swing;
+          }
+        } else {
+          if (charBody) charBody.position.y = 0.504;
+          if (parts) {
+            if (parts.legL) parts.legL.rotation.x = 0;
+            if (parts.legR) parts.legR.rotation.x = 0;
+            if (parts.armL) parts.armL.rotation.x = 0;
+            if (parts.armR) parts.armR.rotation.x = 0;
+          }
+        }
       }
 
       // Unified Y physics — jump + furniture landing + fall + respawn
@@ -455,7 +529,8 @@
       waterTime += dt;
       tileGroup.children.forEach(t => {
         if (t.userData.isWater) {
-          t.position.y = (Math.sin(waterTime * 1.4 + t.userData.x * 0.7 + t.userData.z * 0.5) * 0.012) - 0.04;
+          const baseY = Number.isFinite(t.userData.baseY) ? t.userData.baseY : -0.04;
+          t.position.y = baseY + (Math.sin(waterTime * 1.4 + t.userData.x * 0.7 + t.userData.z * 0.5) * 0.012);
         }
       });
 
@@ -641,11 +716,26 @@
     if (k === 's' || k === 'arrowdown')  { keys.s = true; e.preventDefault(); }
     if (k === 'a' || k === 'arrowleft')  { keys.a = true; e.preventDefault(); }
     if (k === 'd' || k === 'arrowright') { keys.d = true; e.preventDefault(); }
+    if (e.key === 'Shift') keys.shift = true;
     if (e.code === 'Space' && charOnGround && !charSitting) {
       charVelY = 5.0;
       charOnGround = false;
       charJumping = true;
       e.preventDefault();
+    }
+    if (k === 'e') {
+      if (charSitting) {
+        setSitting(false);
+      } else {
+        const st = window.Store.get();
+        const nearby = st.world.tiles.find(t =>
+          t.item === 'chair_iron' &&
+          Math.abs(charPos.x - t.x * TILE) < TILE / 2 &&
+          Math.abs(charPos.z - t.z * TILE) < TILE / 2
+        );
+        if (nearby) setSitting(true);
+        else window.toggleExtendedInventory?.();
+      }
     }
   }
   function onKeyUp(e) {
@@ -654,6 +744,7 @@
     if (k === 's' || k === 'arrowdown')  keys.s = false;
     if (k === 'a' || k === 'arrowleft')  keys.a = false;
     if (k === 'd' || k === 'arrowright') keys.d = false;
+    if (e.key === 'Shift') keys.shift = false;
     if (k === 'escape') {
       if (cameraMode === 'fp') {
         setCameraMode('perspective');
@@ -829,7 +920,7 @@
   }
 
   function handleMovement(dt) {
-    if (charSitting) return;
+    if (charSitting || window.extendedInventoryOpen) return;
     let inputX = 0, inputZ = 0;
     if (keys.w) inputZ -= 1;
     if (keys.s) inputZ += 1;
@@ -844,7 +935,7 @@
     let dz = -inputX * s + inputZ * c;
     const len = Math.hypot(dx, dz);
     dx /= len; dz /= len;
-    const speed = 3.5;
+    const speed = keys.shift ? 5.0 : 1.75;
     const nx = charPos.x + dx * speed * dt;
     const nz = charPos.z + dz * speed * dt;
     const tiles = window.Store.get().world.tiles;
@@ -867,7 +958,7 @@
       charYaw = Math.atan2(dx, dz);
     }
     // Persist (throttled)
-    if (!handleMovement._save || performance.now() - handleMovement._save > 500) {
+    if (!handleMovement._save || performance.now() - handleMovement._save > 5000) {
       handleMovement._save = performance.now();
       window.Store.setCharacterPos(charPos.x, charPos.z);
     }
@@ -1099,95 +1190,114 @@
     return setDeveloperOverlayEnabled(!developerOverlayEnabled);
   }
 
-  // ---------- Character ----------
-  function buildCharacter(THREE) {
+  // ---------- Character — Minecraft skin UV mapped ----------
+  function buildCharacter(THREE, faceTex, outfitTex) {
     const g = new THREE.Group();
 
-    // Body (dress) — dark coat with rust accent
-    const bodyGeo = new THREE.BoxGeometry(0.34, 0.5, 0.28);
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2a2520, roughness: 0.85 });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.42;
+    // Fallback solid-color materials (used before textures load)
+    const FB = {
+      skin:  new THREE.MeshStandardMaterial({ color: 0xc8a27a, roughness: 0.72 }),
+      hair:  new THREE.MeshStandardMaterial({ color: 0x563423, roughness: 0.90 }),
+      shirt: new THREE.MeshStandardMaterial({ color: 0x1f7a8c, roughness: 0.85 }),
+      pants: new THREE.MeshStandardMaterial({ color: 0x2d4f9e, roughness: 0.85 }),
+    };
+
+    // UV region material from a texture (ox,oy = pixel top-left, sw,sh = size, atlas=64×64)
+    function fm(tex, ox, oy, sw, sh) {
+      if (!tex) return new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.8 });
+      const t = tex.clone();
+      t.repeat.set(sw / 64, sh / 64);
+      t.offset.set(ox / 64, 1 - (oy + sh) / 64);
+      t.needsUpdate = true;
+      return new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, transparent: true, alphaTest: 0.1 });
+    }
+    // Shorthand helpers
+    const fh = (ox, oy, sw, sh) => fm(faceTex,   ox, oy, sw, sh);
+    const oh = (ox, oy, sw, sh) => fm(outfitTex, ox, oy, sw, sh);
+
+    // BoxGeometry material index order: [+x, -x, +y, -y, +z(front), -z(back)]
+    // Steve faces +z. His right = +x, left = -x.
+
+    // HEAD — face texture  [+x=left, -x=right, +y=top, -y=bottom, +z=front, -z=back]
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.224, 0.224, 0.224), faceTex ? [
+      fh(16, 8, 8, 8),   // +x = Steve's left
+      fh( 0, 8, 8, 8),   // -x = Steve's right
+      fh( 8, 0, 8, 8),   // +y = top
+      fh(16, 0, 8, 8),   // -y = bottom
+      fh( 8, 8, 8, 8),   // +z = front (face)
+      fh(24, 8, 8, 8),   // -z = back
+    ] : [FB.hair, FB.hair, FB.hair, FB.skin, FB.skin, FB.hair]);
+    head.position.y = 0.784;
+    head.castShadow = true;
+    g.add(head);
+
+    // BODY — outfit texture
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.224, 0.336, 0.112), outfitTex ? [
+      oh(28, 20, 4, 12),  // +x = left side
+      oh(16, 20, 4, 12),  // -x = right side
+      oh(20, 16, 8,  4),  // +y = top
+      oh(28, 16, 8,  4),  // -y = bottom
+      oh(20, 20, 8, 12),  // +z = front
+      oh(32, 20, 8, 12),  // -z = back
+    ] : FB.shirt);
+    body.position.y = 0.504;
     body.castShadow = true;
     g.add(body);
     charBody = body;
 
-    // Skirt flare
-    const skirtGeo = new THREE.ConeGeometry(0.28, 0.32, 8);
-    const skirtMat = new THREE.MeshStandardMaterial({ color: 0x1c1816, roughness: 0.95 });
-    const skirt = new THREE.Mesh(skirtGeo, skirtMat);
-    skirt.position.y = 0.22;
-    skirt.castShadow = true;
-    g.add(skirt);
+    // RIGHT ARM (+x = Steve's right) — outfit texture
+    const armR = new THREE.Mesh(new THREE.BoxGeometry(0.112, 0.336, 0.112), outfitTex ? [
+      oh(40, 20, 4, 12),  // +x = outer
+      oh(48, 20, 4, 12),  // -x = inner
+      oh(44, 16, 4,  4),  // +y = top
+      oh(48, 16, 4,  4),  // -y = bottom
+      oh(44, 20, 4, 12),  // +z = front
+      oh(52, 20, 4, 12),  // -z = back
+    ] : FB.shirt);
+    armR.position.set(0.168, 0, 0);
+    armR.castShadow = true;
+    body.add(armR);
 
-    // Head
-    const headGeo = new THREE.BoxGeometry(0.26, 0.26, 0.24);
-    const headMat = new THREE.MeshStandardMaterial({ color: 0xe8d8c0, roughness: 0.7 });
-    const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 0.82;
-    head.castShadow = true;
-    g.add(head);
+    // LEFT ARM (-x = Steve's left) — outfit texture
+    const armL = new THREE.Mesh(new THREE.BoxGeometry(0.112, 0.336, 0.112), outfitTex ? [
+      oh(40, 52, 4, 12),  // +x = inner
+      oh(32, 52, 4, 12),  // -x = outer
+      oh(36, 48, 4,  4),  // +y = top
+      oh(40, 48, 4,  4),  // -y = bottom
+      oh(36, 52, 4, 12),  // +z = front
+      oh(44, 52, 4, 12),  // -z = back
+    ] : FB.shirt);
+    armL.position.set(-0.168, 0, 0);
+    armL.castShadow = true;
+    body.add(armL);
 
-    // Hair — long white hair (back)
-    const hairBackGeo = new THREE.BoxGeometry(0.30, 0.46, 0.22);
-    const hairMat = new THREE.MeshStandardMaterial({ color: 0xeae4d6, roughness: 0.55, emissive: 0x080808 });
-    const hairBack = new THREE.Mesh(hairBackGeo, hairMat);
-    hairBack.position.set(0, 0.66, -0.045);
-    hairBack.castShadow = true;
-    g.add(hairBack);
-
-    // Hair — top
-    const hairTopGeo = new THREE.BoxGeometry(0.28, 0.08, 0.26);
-    const hairTop = new THREE.Mesh(hairTopGeo, hairMat);
-    hairTop.position.set(0, 0.95, 0);
-    g.add(hairTop);
-
-    // Hair — front bangs
-    const hairFrontGeo = new THREE.BoxGeometry(0.27, 0.10, 0.04);
-    const hairFront = new THREE.Mesh(hairFrontGeo, hairMat);
-    hairFront.position.set(0, 0.88, 0.115);
-    g.add(hairFront);
-    charHairFront = hairFront;
-
-    // Side hair locks (longer, going down past shoulders)
-    const lockGeo = new THREE.BoxGeometry(0.06, 0.5, 0.08);
-    const lockL = new THREE.Mesh(lockGeo, hairMat);
-    lockL.position.set(-0.14, 0.62, 0.04);
-    g.add(lockL);
-    const lockR = new THREE.Mesh(lockGeo, hairMat);
-    lockR.position.set(0.14, 0.62, 0.04);
-    g.add(lockR);
-
-    // Cape / scarf (rust-colored accent)
-    const capeGeo = new THREE.BoxGeometry(0.36, 0.18, 0.05);
-    const capeMat = new THREE.MeshStandardMaterial({ color: 0x8a5635, roughness: 0.9 });
-    const cape = new THREE.Mesh(capeGeo, capeMat);
-    cape.position.set(0, 0.55, -0.13);
-    g.add(cape);
-
-    // Eyes (tiny black points)
-    const eyeGeo = new THREE.BoxGeometry(0.03, 0.03, 0.01);
-    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x10080a, emissive: 0x6a8aa0, emissiveIntensity: 0.15 });
-    const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
-    eyeL.position.set(-0.06, 0.82, 0.125);
-    g.add(eyeL);
-    const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
-    eyeR.position.set(0.06, 0.82, 0.125);
-    g.add(eyeR);
-
-    // Legs
-    const legGeo = new THREE.BoxGeometry(0.09, 0.18, 0.09);
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x1a1614, roughness: 0.9 });
-    const legL = new THREE.Mesh(legGeo, legMat);
-    legL.position.set(-0.07, 0.08, 0);
-    legL.castShadow = true;
-    g.add(legL);
-    const legR = new THREE.Mesh(legGeo, legMat);
-    legR.position.set(0.07, 0.08, 0);
+    // RIGHT LEG (+x = Steve's right) — outfit texture
+    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.112, 0.336, 0.112), outfitTex ? [
+      oh( 0, 20, 4, 12),  // +x = outer
+      oh( 8, 20, 4, 12),  // -x = inner
+      oh( 4, 16, 4,  4),  // +y = top
+      oh( 8, 16, 4,  4),  // -y = bottom
+      oh( 4, 20, 4, 12),  // +z = front
+      oh(12, 20, 4, 12),  // -z = back
+    ] : FB.pants);
+    legR.position.set(0.056, 0.168, 0);
     legR.castShadow = true;
     g.add(legR);
 
-    g.userData.parts = { body, head, skirt, hairBack, hairFront, hairTop, lockL, lockR, cape, legL, legR };
+    // LEFT LEG (-x = Steve's left) — outfit texture
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.112, 0.336, 0.112), outfitTex ? [
+      oh(16, 52, 4, 12),  // +x = inner
+      oh(24, 52, 4, 12),  // -x = outer
+      oh(20, 48, 4,  4),  // +y = top
+      oh(24, 48, 4,  4),  // -y = bottom
+      oh(20, 52, 4, 12),  // +z = front
+      oh(28, 52, 4, 12),  // -z = back
+    ] : FB.pants);
+    legL.position.set(-0.056, 0.168, 0);
+    legL.castShadow = true;
+    g.add(legL);
+
+    g.userData.parts = { body, head, armL, armR, legL, legR };
     return g;
   }
 
@@ -1208,9 +1318,28 @@
       charY = 0; charVelY = 0; charOnGround = true;
       const parts = charGroup.userData.parts;
       if (parts) {
-        parts.body.position.y = 0.32;
-        parts.head.position.y = 0.72;
-        parts.skirt.position.y = 0.16;
+        // body bottom = 0.45 - 0.168 = 0.282 → above chair seat top (0.265)
+        parts.body.position.y = 0.45;
+        parts.head.position.y = 0.73;
+        // leg center y=0.37, rx=-1.2 → bottom end y = 0.37 - 0.168*cos(1.2) ≈ 0.309 → above seat
+        if (parts.legL) {
+          parts.legL.position.set(-0.056, 0.37, 0.04);
+          parts.legL.rotation.x = -1.2;
+        }
+        if (parts.legR) {
+          parts.legR.position.set(0.056, 0.37, 0.04);
+          parts.legR.rotation.x = -1.2;
+        }
+        if (parts.bootL) {
+          parts.bootL.position.set(-0.056, 0.12, 0.18);
+          parts.bootL.rotation.x = -0.20;
+        }
+        if (parts.bootR) {
+          parts.bootR.position.set(0.056, 0.12, 0.18);
+          parts.bootR.rotation.x = -0.20;
+        }
+        if (parts.armL) parts.armL.rotation.x = -0.18;
+        if (parts.armR) parts.armR.rotation.x = -0.18;
       }
     } else {
       // Stand up: teleport to nearest adjacent furniture-free tile
@@ -1237,9 +1366,26 @@
       charY = 0; charVelY = 0; charOnGround = true;
       const parts = charGroup.userData.parts;
       if (parts) {
-        parts.body.position.y = 0.42;
-        parts.head.position.y = 0.82;
-        parts.skirt.position.y = 0.22;
+        parts.body.position.y = 0.504;
+        parts.head.position.y = 0.784;
+        if (parts.legL) {
+          parts.legL.position.set(-0.056, 0.168, 0.0);
+          parts.legL.rotation.x = 0;
+        }
+        if (parts.legR) {
+          parts.legR.position.set(0.056, 0.168, 0.0);
+          parts.legR.rotation.x = 0;
+        }
+        if (parts.bootL) {
+          parts.bootL.position.set(-0.056, 0.040, 0.0);
+          parts.bootL.rotation.x = 0;
+        }
+        if (parts.bootR) {
+          parts.bootR.position.set(0.056, 0.040, 0.0);
+          parts.bootR.rotation.x = 0;
+        }
+        if (parts.armL) parts.armL.rotation.x = 0;
+        if (parts.armR) parts.armR.rotation.x = 0;
       }
     }
   }
@@ -1284,6 +1430,7 @@
   }
 
   function rebuildTiles(tiles) {
+    chairTiles = tiles.filter(t => t.item === 'chair_iron');
     const THREE = window.THREE;
     // Crude rebuild for simplicity (only 4 tiles initially, scales fine for hundreds)
     while (tileGroup.children.length) {
@@ -1306,7 +1453,14 @@
       const isWater = (t.type === 'water_murky');
 
       // ---- Dark earth body (full width, peeks around cap for depth) ----
-      const bodyColor = new THREE.Color(mat.color).multiplyScalar(0.38);
+      const bodyShadeMul = (t.type === 'soil_ash')
+        ? 0.46
+        : (t.type === 'soil_toxic'
+          ? 0.42
+          : (t.type === 'soil_cracked'
+            ? 0.40
+            : (t.type === 'path_broken' ? 0.41 : 0.38)));
+      const bodyColor = new THREE.Color(mat.color).multiplyScalar(bodyShadeMul);
       const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 1.0, metalness: 0.0 });
       const bodyGeo = new THREE.BoxGeometry(TILE * 1.01, TILE_BODY_H, TILE * 1.01);
       const body = new THREE.Mesh(bodyGeo, bodyMat);
@@ -1316,25 +1470,159 @@
 
       // ---- Colored top cap (narrower = ledge effect) ----
       const topColor = new THREE.Color(mat.color);
-      const sideColor = topColor.clone().multiplyScalar(0.48);
-      const topMat = new THREE.MeshStandardMaterial({ color: topColor, roughness: mat.rough ?? 0.9, metalness: 0.0 });
+      if (t.type === 'soil_toxic') {
+        // green-biased contaminated soil tone
+        topColor.lerp(new THREE.Color(0x758a63), 0.28);
+      }
+      const sideShadeMul = (t.type === 'soil_ash')
+        ? 0.58
+        : (t.type === 'soil_cracked' ? 0.52 : (t.type === 'path_broken' ? 0.53 : 0.48));
+      const sideColor = topColor.clone().multiplyScalar(sideShadeMul);
+      const topMat = new THREE.MeshStandardMaterial({
+        color: topColor,
+        roughness: mat.rough ?? 0.9,
+        metalness: (t.type === 'soil_ash') ? 0.05 : 0.0,
+      });
       const sideMat = new THREE.MeshStandardMaterial({ color: sideColor, roughness: 0.97, metalness: 0.0 });
       const capGeo = new THREE.BoxGeometry(TILE * 0.93, TILE_CAP_H, TILE * 0.93);
       // BoxGeometry groups: [+x, -x, +y(top), -y(bottom), +z, -z]
       const mesh = isWater
-        ? new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ color: mat.color, roughness: 0.2, metalness: 0.0, transparent: true, opacity: 0.80 }))
+        ? new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({
+          color: mat.color,
+          roughness: 0.24,
+          metalness: 0.02,
+          transparent: true,
+          opacity: 0.78,
+        }))
         : new THREE.Mesh(capGeo, [sideMat, sideMat, topMat, sideMat, sideMat, sideMat]);
       const capY = 0.03 + TILE_CAP_H * 0.5;  // sits on top of body, top face = 0.09
-      mesh.position.set(t.x * TILE, isWater ? capY - 0.04 : capY, t.z * TILE);
+      const baseY = isWater ? capY - 0.04 : capY;
+      mesh.position.set(t.x * TILE, baseY, t.z * TILE);
       mesh.receiveShadow = true;
       mesh.castShadow = false;
       mesh.userData.x = t.x;
       mesh.userData.z = t.z;
       mesh.userData.isWater = isWater;
+      mesh.userData.baseY = baseY;
       tileGroup.add(mesh);
 
       // ---- Tile surface details ----
-      const surfY = 0.09; // top of cap
+      const surfY = mesh.position.y + TILE_CAP_H * 0.5; // top of cap
+      if (t.type === 'water_murky') {
+        const topLocalY = TILE_CAP_H * 0.5;
+
+        // Mud/sand shallow patches under the water
+        const bedMat = new THREE.MeshBasicMaterial({
+          color: 0x6a5f52,
+          transparent: true,
+          opacity: 0.28,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.24, h: 0.14, x: -0.14, z: 0.10, r: 0.36 },
+          { w: 0.20, h: 0.12, x: 0.16, z: -0.08, r: -0.28 },
+          { w: 0.14, h: 0.10, x: 0.04, z: 0.20, r: 0.62 },
+        ].forEach(({ w, h, x, z, r }) => {
+          const bg = new THREE.PlaneGeometry(w, h);
+          const bm = new THREE.Mesh(bg, bedMat);
+          bm.rotation.x = -Math.PI / 2;
+          bm.rotation.z = r;
+          bm.position.set(x, topLocalY - 0.013, z);
+          mesh.add(bm);
+        });
+
+        // Thin dirty film on the surface (kept subtle)
+        const filmMat = new THREE.MeshBasicMaterial({
+          color: 0xc7d0cb,
+          transparent: true,
+          opacity: 0.12,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.16, h: 0.08, x: -0.02, z: -0.02, r: 0.12 },
+          { w: 0.11, h: 0.06, x: 0.18, z: 0.14, r: -0.34 },
+        ].forEach(({ w, h, x, z, r }) => {
+          const fg = new THREE.PlaneGeometry(w, h);
+          const fm = new THREE.Mesh(fg, filmMat);
+          fm.rotation.x = -Math.PI / 2;
+          fm.rotation.z = r;
+          fm.position.set(x, topLocalY + 0.0008, z);
+          mesh.add(fm);
+        });
+
+        // Gentle small ripples
+        const rippleMat = new THREE.MeshBasicMaterial({
+          color: 0x8eb4bc,
+          transparent: true,
+          opacity: 0.30,
+          side: THREE.DoubleSide,
+        });
+        [
+          { inR: 0.030, outR: 0.034, x: -0.10, z: 0.02 },
+          { inR: 0.024, outR: 0.028, x: 0.17, z: -0.12 },
+          { inR: 0.018, outR: 0.022, x: 0.02, z: 0.18 },
+        ].forEach(({ inR, outR, x, z }) => {
+          const rg = new THREE.RingGeometry(inR, outR, 16);
+          const rm = new THREE.Mesh(rg, rippleMat);
+          rm.rotation.x = -Math.PI / 2;
+          rm.position.set(x, topLocalY + 0.0012, z);
+          mesh.add(rm);
+        });
+
+        // Submerged pebbles
+        const pebbleMats = [
+          new THREE.MeshStandardMaterial({ color: 0xa8aa9e, roughness: 0.92, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x7c7f78, roughness: 0.96, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x6f675d, roughness: 0.98, metalness: 0.0 }),
+        ];
+        [
+          { x: -0.20, z: -0.14, r: 0.014, m: 0, sy: 0.52 },
+          { x: 0.09, z: -0.20, r: 0.012, m: 1, sy: 0.58 },
+          { x: 0.22, z: 0.10, r: 0.013, m: 2, sy: 0.54 },
+          { x: -0.02, z: 0.22, r: 0.011, m: 1, sy: 0.56 },
+        ].forEach(({ x, z, r, m, sy }) => {
+          const sg = new THREE.SphereGeometry(r, 5, 4);
+          const sm = new THREE.Mesh(sg, pebbleMats[m]);
+          sm.scale.y = sy;
+          sm.position.set(x, topLocalY - 0.016 + r * 0.25, z);
+          mesh.add(sm);
+        });
+
+        // Dry grass remnants near the edge
+        const grassMat = new THREE.MeshStandardMaterial({
+          color: 0x8e836f,
+          roughness: 1.0,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.85,
+        });
+        [
+          { x: -0.27, z: 0.02, rot: 0.44, h: 0.050 },
+          { x: 0.24, z: -0.24, rot: -0.30, h: 0.046 },
+          { x: 0.06, z: 0.26, rot: 1.00, h: 0.042 },
+        ].forEach(({ x, z, rot, h }) => {
+          const gg = new THREE.PlaneGeometry(0.016, h);
+          const gm = new THREE.Mesh(gg, grassMat);
+          gm.rotation.y = rot;
+          gm.position.set(x, topLocalY - 0.002 + h * 0.38, z);
+          mesh.add(gm);
+        });
+
+        // Quiet bluish highlight for slight fantasy beauty
+        const sheenMat = new THREE.MeshBasicMaterial({
+          color: 0xdbe7e8,
+          transparent: true,
+          opacity: 0.20,
+          side: THREE.DoubleSide,
+        });
+        const hg = new THREE.PlaneGeometry(0.11, 0.020);
+        const hm = new THREE.Mesh(hg, sheenMat);
+        hm.rotation.x = -Math.PI / 2;
+        hm.rotation.z = -0.20;
+        hm.position.set(0.04, topLocalY + 0.0014, -0.03);
+        mesh.add(hm);
+      }
       if (t.type === 'soil_barren') {
         const cx = t.x * TILE, cz = t.z * TILE;
         // Crack lines — thin flat planes, semi-transparent dark
@@ -1385,34 +1673,603 @@
           }
         });
       }
+      if (t.type === 'soil_ash') {
+        const cx = t.x * TILE, cz = t.z * TILE;
+
+        // Soft, thin cracks (not too aggressive)
+        const ashCrackMat = new THREE.MeshBasicMaterial({
+          color: 0x645d54,
+          transparent: true,
+          opacity: 0.42,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.26, rot: 0.18, px: -0.10, pz: -0.03 },
+          { w: 0.22, rot: -0.52, px: 0.14, pz: 0.11 },
+          { w: 0.14, rot: 0.82, px: 0.00, pz: -0.18 },
+        ].forEach(({ w, rot, px, pz }) => {
+          const cg = new THREE.PlaneGeometry(w, 0.008);
+          const cm = new THREE.Mesh(cg, ashCrackMat);
+          cm.rotation.x = -Math.PI / 2;
+          cm.rotation.z = rot;
+          cm.position.set(cx + px, surfY + 0.001, cz + pz);
+          tileGroup.add(cm);
+        });
+
+        // Burnt patches (gentle soot, not dirty)
+        const sootMat = new THREE.MeshBasicMaterial({
+          color: 0x1d1915,
+          transparent: true,
+          opacity: 0.28,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.20, h: 0.11, px: -0.16, pz: 0.16, rot: 0.45 },
+          { w: 0.16, h: 0.09, px: 0.18, pz: -0.12, rot: -0.30 },
+        ].forEach(({ w, h, px, pz, rot }) => {
+          const bg = new THREE.PlaneGeometry(w, h);
+          const bm = new THREE.Mesh(bg, sootMat);
+          bm.rotation.x = -Math.PI / 2;
+          bm.rotation.z = rot;
+          bm.position.set(cx + px, surfY + 0.0012, cz + pz);
+          tileGroup.add(bm);
+        });
+
+        // Ash grains + pebbles
+        const ashPebbleMats = [
+          new THREE.MeshStandardMaterial({ color: 0xd7d3cb, roughness: 0.82, metalness: 0.05 }),
+          new THREE.MeshStandardMaterial({ color: 0xbeb7ac, roughness: 0.88, metalness: 0.04 }),
+          new THREE.MeshStandardMaterial({ color: 0x8f877a, roughness: 0.94, metalness: 0.02 }),
+          new THREE.MeshStandardMaterial({ color: 0x6f665b, roughness: 0.98, metalness: 0.0 }),
+        ];
+        [
+          { px: -0.22, pz: -0.16, r: 0.016, m: 0, sy: 0.42 },
+          { px: -0.04, pz: -0.24, r: 0.014, m: 1, sy: 0.45 },
+          { px:  0.12, pz: -0.02, r: 0.013, m: 0, sy: 0.48 },
+          { px:  0.24, pz:  0.18, r: 0.012, m: 2, sy: 0.44 },
+          { px: -0.14, pz:  0.22, r: 0.012, m: 1, sy: 0.43 },
+          { px:  0.04, pz:  0.24, r: 0.026, m: 3, sy: 0.58 },
+          { px:  0.22, pz: -0.18, r: 0.022, m: 2, sy: 0.56 },
+        ].forEach(({ px, pz, r, m, sy }) => {
+          const sg = new THREE.SphereGeometry(r, 5, 4);
+          const sm = new THREE.Mesh(sg, ashPebbleMats[m]);
+          sm.scale.y = sy;
+          sm.position.set(cx + px, surfY + r * sy - 0.003, cz + pz);
+          tileGroup.add(sm);
+        });
+
+        // Subtle reflective ash sheen (fantasy but quiet)
+        const sheenMat = new THREE.MeshBasicMaterial({
+          color: 0xe8e4dc,
+          transparent: true,
+          opacity: 0.18,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.12, h: 0.020, px: -0.01, pz: 0.05, rot: -0.25 },
+          { w: 0.09, h: 0.018, px: 0.17, pz: -0.04, rot: 0.35 },
+        ].forEach(({ w, h, px, pz, rot }) => {
+          const gg = new THREE.PlaneGeometry(w, h);
+          const gm = new THREE.Mesh(gg, sheenMat);
+          gm.rotation.x = -Math.PI / 2;
+          gm.rotation.z = rot;
+          gm.position.set(cx + px, surfY + 0.0014, cz + pz);
+          tileGroup.add(gm);
+        });
+      }
       if (t.type === 'soil_toxic') {
-        const glow = new THREE.PointLight(0x9bcc6a, 0.25, 1.5, 1.5);
-        glow.position.set(t.x * TILE, 0.05, t.z * TILE);
-        tileGroup.add(glow);
+        const cx = t.x * TILE, cz = t.z * TILE;
+
+        // fine cracks (quiet, not too aggressive)
+        const toxicCrackMat = new THREE.MeshBasicMaterial({
+          color: 0x3d4233,
+          transparent: true,
+          opacity: 0.46,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.24, rot: 0.22, px: -0.12, pz: -0.05 },
+          { w: 0.20, rot: -0.58, px: 0.12, pz: 0.14 },
+          { w: 0.15, rot: 0.88, px: 0.02, pz: -0.20 },
+        ].forEach(({ w, rot, px, pz }) => {
+          const cg = new THREE.PlaneGeometry(w, 0.008);
+          const cm = new THREE.Mesh(cg, toxicCrackMat);
+          cm.rotation.x = -Math.PI / 2;
+          cm.rotation.z = rot;
+          cm.position.set(cx + px, surfY + 0.001, cz + pz);
+          tileGroup.add(cm);
+        });
+
+        // soft blackened patches (burnt traces)
+        const charMat = new THREE.MeshBasicMaterial({
+          color: 0x23271e,
+          transparent: true,
+          opacity: 0.26,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.21, h: 0.11, px: -0.17, pz: 0.17, rot: 0.36 },
+          { w: 0.17, h: 0.09, px: 0.20, pz: -0.10, rot: -0.28 },
+        ].forEach(({ w, h, px, pz, rot }) => {
+          const bg = new THREE.PlaneGeometry(w, h);
+          const bm = new THREE.Mesh(bg, charMat);
+          bm.rotation.x = -Math.PI / 2;
+          bm.rotation.z = rot;
+          bm.position.set(cx + px, surfY + 0.0012, cz + pz);
+          tileGroup.add(bm);
+        });
+
+        // muted green contamination marks (natural / calm)
+        const contamMat = new THREE.MeshBasicMaterial({
+          color: 0x7b9366,
+          transparent: true,
+          opacity: 0.40,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.16, h: 0.10, px: 0.06, pz: 0.04, rot: -0.18 },
+          { w: 0.12, h: 0.08, px: -0.03, pz: -0.18, rot: 0.32 },
+        ].forEach(({ w, h, px, pz, rot }) => {
+          const gg = new THREE.PlaneGeometry(w, h);
+          const gm = new THREE.Mesh(gg, contamMat);
+          gm.rotation.x = -Math.PI / 2;
+          gm.rotation.z = rot;
+          gm.position.set(cx + px, surfY + 0.0015, cz + pz);
+          tileGroup.add(gm);
+        });
+
+        // pebbles + ash grains
+        const toxicPebbleMats = [
+          new THREE.MeshStandardMaterial({ color: 0xb0b39e, roughness: 0.9, metalness: 0.02 }),
+          new THREE.MeshStandardMaterial({ color: 0x8e917f, roughness: 0.96, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x686e5f, roughness: 0.98, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x545b4b, roughness: 1.0, metalness: 0.0 }),
+        ];
+        [
+          { px: -0.23, pz: -0.18, r: 0.015, m: 0, sy: 0.45 },
+          { px: -0.05, pz: -0.25, r: 0.013, m: 1, sy: 0.46 },
+          { px:  0.14, pz: -0.01, r: 0.013, m: 0, sy: 0.48 },
+          { px:  0.24, pz:  0.17, r: 0.012, m: 2, sy: 0.44 },
+          { px: -0.13, pz:  0.23, r: 0.012, m: 1, sy: 0.43 },
+          { px:  0.05, pz:  0.23, r: 0.024, m: 3, sy: 0.58 },
+          { px:  0.21, pz: -0.17, r: 0.020, m: 2, sy: 0.56 },
+        ].forEach(({ px, pz, r, m, sy }) => {
+          const sg = new THREE.SphereGeometry(r, 5, 4);
+          const sm = new THREE.Mesh(sg, toxicPebbleMats[m]);
+          sm.scale.y = sy;
+          sm.position.set(cx + px, surfY + r * sy - 0.003, cz + pz);
+          tileGroup.add(sm);
+        });
+
+        // dead grass debris (small, hand-made low poly feel)
+        const deadGrassMat = new THREE.MeshStandardMaterial({
+          color: 0x748064,
+          roughness: 1.0,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+        });
+        [
+          { px: -0.26, pz: 0.06, rot: 0.45, h: 0.06 },
+          { px:  0.17, pz: -0.27, rot: -0.30, h: 0.05 },
+          { px: -0.02, pz: 0.27, rot: 0.90, h: 0.055 },
+        ].forEach(({ px, pz, rot, h }) => {
+          const dg = new THREE.PlaneGeometry(0.018, h);
+          const dm = new THREE.Mesh(dg, deadGrassMat);
+          dm.rotation.y = rot;
+          dm.position.set(cx + px, surfY + h * 0.45, cz + pz);
+          tileGroup.add(dm);
+        });
+
+        // tiny calm sheen to avoid too dirty look
+        const toxicSheenMat = new THREE.MeshBasicMaterial({
+          color: 0xd7dfd0,
+          transparent: true,
+          opacity: 0.12,
+          side: THREE.DoubleSide,
+        });
+        const hg = new THREE.PlaneGeometry(0.10, 0.018);
+        const hm = new THREE.Mesh(hg, toxicSheenMat);
+        hm.rotation.x = -Math.PI / 2;
+        hm.rotation.z = -0.24;
+        hm.position.set(cx + 0.03, surfY + 0.0016, cz - 0.02);
+        tileGroup.add(hm);
       }
       if (t.type === 'brick_ruin') {
-        for (let i = 0; i < 3; i++) {
-          const bg = new THREE.BoxGeometry(0.12, 0.06, 0.16);
-          const bm = new THREE.MeshStandardMaterial({ color: 0x6a3a26, roughness: 0.9 });
-          const bb = new THREE.Mesh(bg, bm);
-          bb.position.set(t.x * TILE + (i - 1) * 0.22, surfY + 0.03, t.z * TILE - 0.15);
-          bb.rotation.y = (i - 1) * 0.4;
-          tileGroup.add(bb);
-        }
+        const cx = t.x * TILE, cz = t.z * TILE;
+
+        // Broken brick floor pieces (clear brick identity, but naturally collapsed)
+        const brickMats = [
+          new THREE.MeshStandardMaterial({ color: 0xa0644f, roughness: 0.9, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x8c5844, roughness: 0.94, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x765246, roughness: 0.97, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0xb3775f, roughness: 0.88, metalness: 0.0 }),
+        ];
+        [
+          { px: -0.22, pz: -0.18, sx: 0.22, sy: 0.026, sz: 0.12, m: 0, ry: 0.06 },
+          { px:  0.03, pz: -0.18, sx: 0.20, sy: 0.024, sz: 0.11, m: 1, ry: -0.04 },
+          { px:  0.24, pz: -0.16, sx: 0.18, sy: 0.023, sz: 0.10, m: 2, ry: 0.05 },
+          { px: -0.18, pz:  0.02, sx: 0.19, sy: 0.024, sz: 0.11, m: 3, ry: 0.12 },
+          { px:  0.07, pz:  0.02, sx: 0.21, sy: 0.025, sz: 0.12, m: 0, ry: -0.08 },
+          { px:  0.28, pz:  0.04, sx: 0.16, sy: 0.022, sz: 0.10, m: 2, ry: 0.10 },
+          { px: -0.24, pz:  0.22, sx: 0.20, sy: 0.024, sz: 0.11, m: 1, ry: -0.06 },
+          { px:  0.01, pz:  0.23, sx: 0.18, sy: 0.023, sz: 0.10, m: 2, ry: 0.03 },
+          { px:  0.23, pz:  0.22, sx: 0.21, sy: 0.025, sz: 0.12, m: 3, ry: -0.10 },
+        ].forEach(({ px, pz, sx, sy, sz, m, ry }) => {
+          const bg = new THREE.BoxGeometry(sx, sy, sz);
+          const bm = new THREE.Mesh(bg, brickMats[m]);
+          bm.position.set(cx + px, surfY + sy * 0.52 - 0.0035, cz + pz);
+          bm.rotation.y = ry;
+          tileGroup.add(bm);
+        });
+
+        // Soil/sand in the gaps between bricks
+        const gapMat = new THREE.MeshBasicMaterial({
+          color: 0x64584c,
+          transparent: true,
+          opacity: 0.46,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.60, h: 0.022, px: 0.00, pz: -0.07, rot: 0.06 },
+          { w: 0.58, h: 0.020, px: 0.02, pz: 0.12, rot: -0.08 },
+          { w: 0.18, h: 0.08, px: -0.31, pz: 0.05, rot: 0.28 },
+        ].forEach(({ w, h, px, pz, rot }) => {
+          const gg = new THREE.PlaneGeometry(w, h);
+          const gm = new THREE.Mesh(gg, gapMat);
+          gm.rotation.x = -Math.PI / 2;
+          gm.rotation.z = rot;
+          gm.position.set(cx + px, surfY + 0.0012, cz + pz);
+          tileGroup.add(gm);
+        });
+
+        // Fracture traces on old brick surface
+        const crackCoreMat = new THREE.MeshBasicMaterial({
+          color: 0x2e231d,
+          transparent: true,
+          opacity: 0.66,
+          side: THREE.DoubleSide,
+        });
+        const crackEdgeMat = new THREE.MeshBasicMaterial({
+          color: 0x594338,
+          transparent: true,
+          opacity: 0.34,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.30, core: 0.012, px: -0.08, pz: -0.01, rot: 0.28 },
+          { w: 0.26, core: 0.011, px: 0.17, pz: 0.10, rot: -0.46 },
+          { w: 0.18, core: 0.010, px: -0.23, pz: 0.19, rot: 0.92 },
+        ].forEach(({ w, core, px, pz, rot }) => {
+          const eg = new THREE.PlaneGeometry(w, core * 2.0);
+          const em = new THREE.Mesh(eg, crackEdgeMat);
+          em.rotation.x = -Math.PI / 2;
+          em.rotation.z = rot;
+          em.position.set(cx + px, surfY + 0.0011, cz + pz);
+          tileGroup.add(em);
+
+          const cg = new THREE.PlaneGeometry(w * 0.95, core);
+          const cm = new THREE.Mesh(cg, crackCoreMat);
+          cm.rotation.x = -Math.PI / 2;
+          cm.rotation.z = rot;
+          cm.position.set(cx + px, surfY + 0.0013, cz + pz);
+          tileGroup.add(cm);
+        });
+
+        // Chipped brick fragments + small rubble
+        [
+          { px: -0.30, pz: -0.01, sx: 0.052, sy: 0.016, sz: 0.036, m: 1, ry: 0.34 },
+          { px: 0.16, pz: -0.28, sx: 0.046, sy: 0.014, sz: 0.032, m: 2, ry: -0.28 },
+          { px: 0.30, pz: 0.12, sx: 0.040, sy: 0.013, sz: 0.028, m: 0, ry: 0.18 },
+          { px: -0.05, pz: 0.31, sx: 0.038, sy: 0.012, sz: 0.026, m: 3, ry: -0.16 },
+        ].forEach(({ px, pz, sx, sy, sz, m, ry }) => {
+          const fg = new THREE.BoxGeometry(sx, sy, sz);
+          const fm = new THREE.Mesh(fg, brickMats[m]);
+          fm.position.set(cx + px, surfY + sy * 0.55 - 0.003, cz + pz);
+          fm.rotation.y = ry;
+          tileGroup.add(fm);
+        });
+
+        const pebbleMats = [
+          new THREE.MeshStandardMaterial({ color: 0xb3a696, roughness: 0.92, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x8a7f73, roughness: 0.96, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x6f665d, roughness: 0.98, metalness: 0.0 }),
+        ];
+        [
+          { px: -0.14, pz: -0.25, r: 0.013, m: 0, sy: 0.54 },
+          { px: 0.09, pz: -0.04, r: 0.012, m: 1, sy: 0.58 },
+          { px: 0.25, pz: 0.18, r: 0.011, m: 2, sy: 0.56 },
+          { px: -0.26, pz: 0.10, r: 0.012, m: 1, sy: 0.55 },
+        ].forEach(({ px, pz, r, m, sy }) => {
+          const sg = new THREE.SphereGeometry(r, 5, 4);
+          const sm = new THREE.Mesh(sg, pebbleMats[m]);
+          sm.scale.y = sy;
+          sm.position.set(cx + px, surfY + r * sy - 0.003, cz + pz);
+          tileGroup.add(sm);
+        });
+
+        // Dry grass remains near edges
+        const grassMat = new THREE.MeshStandardMaterial({
+          color: 0x9b8b72,
+          roughness: 1.0,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.88,
+        });
+        [
+          { px: -0.31, pz: -0.22, rot: 0.42, h: 0.050 },
+          { px: 0.29, pz: -0.08, rot: -0.30, h: 0.047 },
+          { px: 0.05, pz: 0.30, rot: 0.96, h: 0.044 },
+        ].forEach(({ px, pz, rot, h }) => {
+          const gg = new THREE.PlaneGeometry(0.016, h);
+          const gm = new THREE.Mesh(gg, grassMat);
+          gm.rotation.y = rot;
+          gm.position.set(cx + px, surfY + h * 0.42, cz + pz);
+          tileGroup.add(gm);
+        });
+
+        // Subtle warm/calm sheen to keep "clean but old" feel
+        const warmSheenMat = new THREE.MeshBasicMaterial({
+          color: 0xf0d9c2,
+          transparent: true,
+          opacity: 0.14,
+          side: THREE.DoubleSide,
+        });
+        const hg = new THREE.PlaneGeometry(0.12, 0.018);
+        const hm = new THREE.Mesh(hg, warmSheenMat);
+        hm.rotation.x = -Math.PI / 2;
+        hm.rotation.z = -0.18;
+        hm.position.set(cx + 0.03, surfY + 0.0016, cz - 0.02);
+        tileGroup.add(hm);
       }
       if (t.type === 'soil_cracked') {
-        const cg = new THREE.PlaneGeometry(0.80, 0.04);
-        const cm = new THREE.MeshBasicMaterial({ color: 0x0a0604, transparent: true, opacity: 0.65 });
-        const c1 = new THREE.Mesh(cg, cm);
-        c1.rotation.x = -Math.PI / 2;
-        c1.position.set(t.x * TILE, surfY + 0.001, t.z * TILE);
-        c1.rotation.z = 0.4;
-        tileGroup.add(c1);
-        const c2 = new THREE.Mesh(cg, cm);
-        c2.rotation.x = -Math.PI / 2;
-        c2.position.set(t.x * TILE, surfY + 0.001, t.z * TILE + 0.15);
-        c2.rotation.z = -0.6;
-        tileGroup.add(c2);
+        const cx = t.x * TILE, cz = t.z * TILE;
+
+        // Deep but readable cracks: dark core + soft edge
+        const crackCoreMat = new THREE.MeshBasicMaterial({
+          color: 0x1d1611,
+          transparent: true,
+          opacity: 0.72,
+          side: THREE.DoubleSide,
+        });
+        const crackEdgeMat = new THREE.MeshBasicMaterial({
+          color: 0x3a2e22,
+          transparent: true,
+          opacity: 0.36,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.74, core: 0.022, rot: 0.42, px: -0.01, pz: 0.02 },
+          { w: 0.64, core: 0.020, rot: -0.58, px: 0.06, pz: -0.05 },
+          { w: 0.34, core: 0.016, rot: 1.08, px: -0.14, pz: 0.15 },
+        ].forEach(({ w, core, rot, px, pz }) => {
+          const eg = new THREE.PlaneGeometry(w, core * 2.0);
+          const em = new THREE.Mesh(eg, crackEdgeMat);
+          em.rotation.x = -Math.PI / 2;
+          em.rotation.z = rot;
+          em.position.set(cx + px, surfY + 0.001, cz + pz);
+          tileGroup.add(em);
+
+          const cg = new THREE.PlaneGeometry(w * 0.96, core);
+          const cm = new THREE.Mesh(cg, crackCoreMat);
+          cm.rotation.x = -Math.PI / 2;
+          cm.rotation.z = rot;
+          cm.position.set(cx + px, surfY + 0.0012, cz + pz);
+          tileGroup.add(cm);
+        });
+
+        // Crumbled dry-soil fragments
+        const fragmentMats = [
+          new THREE.MeshStandardMaterial({ color: 0x8b765d, roughness: 0.95, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x6f5d4a, roughness: 0.98, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x9d876b, roughness: 0.92, metalness: 0.0 }),
+        ];
+        [
+          { px: -0.26, pz: -0.18, sx: 0.08, sy: 0.030, sz: 0.06, m: 0, ry: 0.34 },
+          { px:  0.24, pz:  0.15, sx: 0.07, sy: 0.026, sz: 0.05, m: 1, ry: -0.46 },
+          { px: -0.06, pz:  0.26, sx: 0.06, sy: 0.022, sz: 0.05, m: 2, ry: 0.18 },
+          { px:  0.18, pz: -0.24, sx: 0.05, sy: 0.020, sz: 0.04, m: 1, ry: -0.22 },
+        ].forEach(({ px, pz, sx, sy, sz, m, ry }) => {
+          const fg = new THREE.BoxGeometry(sx, sy, sz);
+          const fm = new THREE.Mesh(fg, fragmentMats[m]);
+          fm.position.set(cx + px, surfY + sy * 0.52 - 0.004, cz + pz);
+          fm.rotation.y = ry;
+          tileGroup.add(fm);
+        });
+
+        // Small pebbles
+        const pebbleMats = [
+          new THREE.MeshStandardMaterial({ color: 0xb29d81, roughness: 0.9 }),
+          new THREE.MeshStandardMaterial({ color: 0x7c6852, roughness: 0.96 }),
+          new THREE.MeshStandardMaterial({ color: 0x988268, roughness: 0.92 }),
+        ];
+        [
+          { px: -0.18, pz: 0.22, r: 0.014, m: 0, sy: 0.52 },
+          { px:  0.06, pz: 0.18, r: 0.012, m: 1, sy: 0.55 },
+          { px:  0.22, pz: -0.08, r: 0.013, m: 2, sy: 0.50 },
+          { px: -0.02, pz: -0.26, r: 0.011, m: 1, sy: 0.58 },
+          { px: -0.25, pz: -0.02, r: 0.012, m: 2, sy: 0.52 },
+        ].forEach(({ px, pz, r, m, sy }) => {
+          const sg = new THREE.SphereGeometry(r, 5, 4);
+          const sm = new THREE.Mesh(sg, pebbleMats[m]);
+          sm.scale.y = sy;
+          sm.position.set(cx + px, surfY + r * sy - 0.003, cz + pz);
+          tileGroup.add(sm);
+        });
+
+        // Dry grass remnants
+        const remnantMat = new THREE.MeshStandardMaterial({
+          color: 0x8d7b5c,
+          roughness: 1.0,
+          metalness: 0.0,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.9,
+        });
+        [
+          { px: -0.22, pz: 0.04, rot: 0.38, h: 0.055 },
+          { px:  0.14, pz: -0.20, rot: -0.28, h: 0.050 },
+          { px:  0.01, pz: 0.24, rot: 0.92, h: 0.048 },
+        ].forEach(({ px, pz, rot, h }) => {
+          const gg = new THREE.PlaneGeometry(0.017, h);
+          const gm = new THREE.Mesh(gg, remnantMat);
+          gm.rotation.y = rot;
+          gm.position.set(cx + px, surfY + h * 0.45, cz + pz);
+          tileGroup.add(gm);
+        });
+
+        // Slight dry sheen (quiet, not wet)
+        const drySheenMat = new THREE.MeshBasicMaterial({
+          color: 0xe2d8c8,
+          transparent: true,
+          opacity: 0.11,
+          side: THREE.DoubleSide,
+        });
+        const hg = new THREE.PlaneGeometry(0.11, 0.017);
+        const hm = new THREE.Mesh(hg, drySheenMat);
+        hm.rotation.x = -Math.PI / 2;
+        hm.rotation.z = -0.18;
+        hm.position.set(cx + 0.04, surfY + 0.0016, cz - 0.03);
+        tileGroup.add(hm);
+      }
+
+      if (t.type === 'path_broken') {
+        const cx = t.x * TILE, cz = t.z * TILE;
+
+        // Asphalt cracks: readable deep core + soft fracture edge
+        const roadCrackCoreMat = new THREE.MeshBasicMaterial({
+          color: 0x1f1d1b,
+          transparent: true,
+          opacity: 0.76,
+          side: THREE.DoubleSide,
+        });
+        const roadCrackEdgeMat = new THREE.MeshBasicMaterial({
+          color: 0x4f4a44,
+          transparent: true,
+          opacity: 0.34,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.76, core: 0.020, rot: 0.36, px: -0.01, pz: -0.02 },
+          { w: 0.58, core: 0.018, rot: -0.52, px: 0.10, pz: 0.10 },
+          { w: 0.32, core: 0.014, rot: 1.10, px: -0.16, pz: 0.13 },
+        ].forEach(({ w, core, rot, px, pz }) => {
+          const eg = new THREE.PlaneGeometry(w, core * 2.1);
+          const em = new THREE.Mesh(eg, roadCrackEdgeMat);
+          em.rotation.x = -Math.PI / 2;
+          em.rotation.z = rot;
+          em.position.set(cx + px, surfY + 0.001, cz + pz);
+          tileGroup.add(em);
+
+          const cg = new THREE.PlaneGeometry(w * 0.96, core);
+          const cm = new THREE.Mesh(cg, roadCrackCoreMat);
+          cm.rotation.x = -Math.PI / 2;
+          cm.rotation.z = rot;
+          cm.position.set(cx + px, surfY + 0.0012, cz + pz);
+          tileGroup.add(cm);
+        });
+
+        // Broken paving pieces (kept simple, low-poly)
+        const slabMats = [
+          new THREE.MeshStandardMaterial({ color: 0x7b766f, roughness: 0.9, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x69655f, roughness: 0.95, metalness: 0.0 }),
+          new THREE.MeshStandardMaterial({ color: 0x85796f, roughness: 0.92, metalness: 0.0 }),
+        ];
+        [
+          { px: -0.18, pz: -0.16, sx: 0.20, sy: 0.015, sz: 0.14, m: 0, ry: 0.18 },
+          { px:  0.22, pz:  0.10, sx: 0.18, sy: 0.014, sz: 0.13, m: 1, ry: -0.22 },
+          { px:  0.02, pz:  0.24, sx: 0.15, sy: 0.013, sz: 0.11, m: 2, ry: 0.14 },
+        ].forEach(({ px, pz, sx, sy, sz, m, ry }) => {
+          const sg = new THREE.BoxGeometry(sx, sy, sz);
+          const sm = new THREE.Mesh(sg, slabMats[m]);
+          sm.position.set(cx + px, surfY + sy * 0.52 - 0.003, cz + pz);
+          sm.rotation.y = ry;
+          tileGroup.add(sm);
+        });
+
+        // Missing edge hints (collapsed edge silhouette without changing tile bounds)
+        const edgeChipMat = new THREE.MeshBasicMaterial({
+          color: 0x2d2a27,
+          transparent: true,
+          opacity: 0.40,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.20, h: 0.07, px: -0.34, pz: -0.30, rot: -0.10 },
+          { w: 0.18, h: 0.06, px: 0.33, pz: 0.28, rot: 0.20 },
+          { w: 0.15, h: 0.05, px: 0.30, pz: -0.31, rot: -0.30 },
+        ].forEach(({ w, h, px, pz, rot }) => {
+          const eg = new THREE.PlaneGeometry(w, h);
+          const em = new THREE.Mesh(eg, edgeChipMat);
+          em.rotation.x = -Math.PI / 2;
+          em.rotation.z = rot;
+          em.position.set(cx + px, surfY + 0.0011, cz + pz);
+          tileGroup.add(em);
+        });
+
+        // Gravel + debris
+        const rubbleMats = [
+          new THREE.MeshStandardMaterial({ color: 0x8f867a, roughness: 0.93 }),
+          new THREE.MeshStandardMaterial({ color: 0x5f5a53, roughness: 0.98 }),
+          new THREE.MeshStandardMaterial({ color: 0x786b5f, roughness: 0.95 }),
+        ];
+        [
+          { px: -0.23, pz: 0.20, r: 0.015, m: 0, sy: 0.54 },
+          { px: -0.06, pz: -0.26, r: 0.013, m: 1, sy: 0.58 },
+          { px: 0.18, pz: -0.20, r: 0.014, m: 2, sy: 0.52 },
+          { px: 0.27, pz: 0.18, r: 0.012, m: 1, sy: 0.56 },
+          { px: -0.02, pz: 0.09, r: 0.011, m: 2, sy: 0.55 },
+        ].forEach(({ px, pz, r, m, sy }) => {
+          const rg = new THREE.SphereGeometry(r, 5, 4);
+          const rm = new THREE.Mesh(rg, rubbleMats[m]);
+          rm.scale.y = sy;
+          rm.position.set(cx + px, surfY + r * sy - 0.003, cz + pz);
+          tileGroup.add(rm);
+        });
+        [
+          { px: -0.12, pz: 0.27, sx: 0.040, sy: 0.016, sz: 0.030, m: 2, ry: 0.50 },
+          { px: 0.24, pz: -0.05, sx: 0.036, sy: 0.014, sz: 0.028, m: 1, ry: -0.32 },
+          { px: 0.03, pz: -0.18, sx: 0.032, sy: 0.013, sz: 0.025, m: 0, ry: 0.16 },
+        ].forEach(({ px, pz, sx, sy, sz, m, ry }) => {
+          const dg = new THREE.BoxGeometry(sx, sy, sz);
+          const dm = new THREE.Mesh(dg, rubbleMats[m]);
+          dm.position.set(cx + px, surfY + sy * 0.55 - 0.003, cz + pz);
+          dm.rotation.y = ry;
+          tileGroup.add(dm);
+        });
+
+        // Dry dust veil (quiet, not dirty)
+        const dustMat = new THREE.MeshBasicMaterial({
+          color: 0xb2a595,
+          transparent: true,
+          opacity: 0.14,
+          side: THREE.DoubleSide,
+        });
+        [
+          { w: 0.18, h: 0.10, px: -0.02, pz: -0.01, rot: 0.14 },
+          { w: 0.14, h: 0.08, px: 0.16, pz: 0.17, rot: -0.30 },
+        ].forEach(({ w, h, px, pz, rot }) => {
+          const dg = new THREE.PlaneGeometry(w, h);
+          const dm = new THREE.Mesh(dg, dustMat);
+          dm.rotation.x = -Math.PI / 2;
+          dm.rotation.z = rot;
+          dm.position.set(cx + px, surfY + 0.0015, cz + pz);
+          tileGroup.add(dm);
+        });
+
+        // Subtle calm highlight to keep it visually appealing
+        const roadSheenMat = new THREE.MeshBasicMaterial({
+          color: 0xd8cec0,
+          transparent: true,
+          opacity: 0.10,
+          side: THREE.DoubleSide,
+        });
+        const hg = new THREE.PlaneGeometry(0.10, 0.016);
+        const hm = new THREE.Mesh(hg, roadSheenMat);
+        hm.rotation.x = -Math.PI / 2;
+        hm.rotation.z = -0.22;
+        hm.position.set(cx + 0.05, surfY + 0.0016, cz - 0.04);
+        tileGroup.add(hm);
       }
 
       // Item on tile
@@ -1471,22 +2328,66 @@
       lampLight.position.set(0.25, 0.46, -0.18);
       g.add(lampLight);
     } else if (id === 'chair_iron') {
-      // Seat
-      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.34), ironMat);
-      seat.position.y = 0.24;
-      seat.castShadow = true;
-      g.add(seat);
-      // Back
-      const back = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, 0.05), ironMat);
-      back.position.set(0, 0.45, -0.15);
-      back.castShadow = true;
-      g.add(back);
-      // Legs
-      [[-0.14, -0.14], [0.14, -0.14], [-0.14, 0.14], [0.14, 0.14]].forEach(([px, pz]) => {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.22, 0.03), ironMat);
-        leg.position.set(px, 0.12, pz);
+      // Back posts — run from floor through seat to backrest top, slight backward lean
+      [-0.13, 0.13].forEach(bx => {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.66, 0.028), ironMat);
+        post.position.set(bx, 0.33, -0.13);
+        post.rotation.x = 0.06;
+        post.castShadow = true;
+        g.add(post);
+      });
+
+      // Front legs — slight outward splay per side
+      [-0.13, 0.13].forEach((fx, i) => {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.26, 0.028), ironMat);
+        leg.position.set(fx, 0.13, 0.14);
+        leg.rotation.z = (i===0 ? -1 : 1) * 0.022;
+        leg.castShadow = true;
         g.add(leg);
       });
+
+      // Lower cross braces (rust — worn joints)
+      const brFront = new THREE.Mesh(new THREE.BoxGeometry(0.252, 0.018, 0.018), rustMat);
+      brFront.position.set(0, 0.082, 0.14);
+      g.add(brFront);
+      const brBack = new THREE.Mesh(new THREE.BoxGeometry(0.252, 0.018, 0.018), rustMat);
+      brBack.position.set(0, 0.082, -0.13);
+      g.add(brBack);
+      [-0.13, 0.13].forEach(sx => {
+        const br = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.018, 0.255), rustMat);
+        br.position.set(sx, 0.082, 0.005);
+        g.add(br);
+      });
+
+      // Seat — hard flat metal plate, top at y≈0.264
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.030, 0.28), ironMat);
+      seat.position.set(0, 0.249, 0.005);
+      seat.castShadow = true;
+      g.add(seat);
+      // Seat rim — rust, slightly wider/thinner lip
+      const seatRim = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.014, 0.30), rustMat);
+      seatRim.position.set(0, 0.232, 0.005);
+      g.add(seatRim);
+
+      // Under-seat support bar
+      const suppBar = new THREE.Mesh(new THREE.BoxGeometry(0.254, 0.018, 0.018), ironMat);
+      suppBar.position.set(0, 0.228, -0.078);
+      g.add(suppBar);
+
+      // Backrest — top bar + mid bar + center strut (all slightly leaned)
+      const bkTop = new THREE.Mesh(new THREE.BoxGeometry(0.254, 0.030, 0.030), ironMat);
+      bkTop.position.set(0, 0.588, -0.165);
+      bkTop.rotation.x = 0.06;
+      bkTop.castShadow = true;
+      g.add(bkTop);
+      const bkMid = new THREE.Mesh(new THREE.BoxGeometry(0.254, 0.022, 0.022), ironMat);
+      bkMid.position.set(0, 0.468, -0.158);
+      bkMid.rotation.x = 0.06;
+      g.add(bkMid);
+      const bkStrut = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.132, 0.020), rustMat);
+      bkStrut.position.set(0, 0.528, -0.162);
+      bkStrut.rotation.x = 0.06;
+      g.add(bkStrut);
     } else if (id === 'shelf_rust') {
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.25), rustMat);
       body.position.y = 0.42;
@@ -1499,16 +2400,80 @@
         g.add(sh);
       }
     } else if (id === 'bed_iron') {
-      const base = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 0.5), ironMat);
-      base.position.y = 0.13;
-      base.castShadow = true;
-      g.add(base);
-      const mattress = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.06, 0.46), new THREE.MeshStandardMaterial({ color: 0x4a3a32, roughness: 0.95 }));
-      mattress.position.y = 0.22;
+      const matMattress = new THREE.MeshStandardMaterial({ color: 0x908070, roughness: 0.95 });
+      const matBlanket  = new THREE.MeshStandardMaterial({ color: 0x6e7a74, roughness: 0.92 });
+      const matPillow   = new THREE.MeshStandardMaterial({ color: 0xc0b09a, roughness: 0.93 });
+
+      // 4 corner posts — head(-z) taller for headboard, foot(+z) shorter for footboard
+      // alternate iron/rust for worn look; slight outward lean per side
+      [[-0.27,-0.40,0.43],[0.27,-0.40,0.43],[-0.27,0.40,0.29],[0.27,0.40,0.29]]
+        .forEach(([px,pz,h],i) => {
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.036,h,0.036), i%2===0?ironMat:rustMat);
+          post.position.set(px, h/2, pz);
+          post.rotation.z = (px<0?-1:1)*0.03;
+          post.castShadow = true;
+          g.add(post);
+        });
+
+      // Side rails
+      [-0.27,0.27].forEach(rx => {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.032,0.038,0.77), ironMat);
+        rail.position.set(rx, 0.208, 0);
+        rail.castShadow = true;
+        g.add(rail);
+      });
+
+      // Headboard — top bar + mid bar + 3 vertical struts
+      const hbTop = new THREE.Mesh(new THREE.BoxGeometry(0.58,0.034,0.034), ironMat);
+      hbTop.position.set(0, 0.415, -0.40);
+      g.add(hbTop);
+      const hbMid = new THREE.Mesh(new THREE.BoxGeometry(0.58,0.024,0.024), ironMat);
+      hbMid.position.set(0, 0.305, -0.40);
+      g.add(hbMid);
+      [-0.19,0,0.19].forEach(sx => {
+        const sv = new THREE.Mesh(new THREE.BoxGeometry(0.022,0.138,0.022), rustMat);
+        sv.position.set(sx, 0.358, -0.40);
+        g.add(sv);
+      });
+
+      // Footboard — single bar
+      const fbBar = new THREE.Mesh(new THREE.BoxGeometry(0.58,0.028,0.028), ironMat);
+      fbBar.position.set(0, 0.268, 0.40);
+      g.add(fbBar);
+
+      // Slats (5) — rust-tinted, visible between frame and mattress
+      for (let i=0;i<5;i++) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(0.52,0.016,0.048), rustMat);
+        slat.position.set(0, 0.221, -0.29+i*0.145);
+        g.add(slat);
+      }
+
+      // Mattress — worn gray-brown ticking
+      const mattress = new THREE.Mesh(new THREE.BoxGeometry(0.54,0.064,0.78), matMattress);
+      mattress.position.set(0, 0.257, 0);
+      mattress.castShadow = true;
       g.add(mattress);
-      const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.4), new THREE.MeshStandardMaterial({ color: 0x8a7c66, roughness: 0.95 }));
-      pillow.position.set(-0.22, 0.27, 0);
-      g.add(pillow);
+
+      // Blanket — covers lower 2/3, with folded edge near head and toe-bunch at foot
+      const blanket = new THREE.Mesh(new THREE.BoxGeometry(0.50,0.026,0.52), matBlanket);
+      blanket.position.set(0, 0.296, 0.13);
+      g.add(blanket);
+      const bFold = new THREE.Mesh(new THREE.BoxGeometry(0.50,0.036,0.052),
+        new THREE.MeshStandardMaterial({ color: 0x7e8e88, roughness: 0.92 }));
+      bFold.position.set(0, 0.298, -0.12);
+      g.add(bFold);
+      const bToe = new THREE.Mesh(new THREE.BoxGeometry(0.46,0.040,0.058), matBlanket);
+      bToe.position.set(0, 0.300, 0.36);
+      g.add(bToe);
+
+      // Pillow — two-layer for slight puffy look
+      const pilBase = new THREE.Mesh(new THREE.BoxGeometry(0.32,0.040,0.22), matPillow);
+      pilBase.position.set(0, 0.289, -0.265);
+      g.add(pilBase);
+      const pilTop = new THREE.Mesh(new THREE.BoxGeometry(0.26,0.040,0.16),
+        new THREE.MeshStandardMaterial({ color: 0xd0c0a8, roughness: 0.93 }));
+      pilTop.position.set(0, 0.313, -0.265);
+      g.add(pilTop);
     } else if (id === 'lamp_broken') {
       // Bent street lamp
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.04, 1.2, 6), ironMat);

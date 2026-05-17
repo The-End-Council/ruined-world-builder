@@ -10,18 +10,31 @@ const Dock = ({ openModal, selected, setSelected }) => {
   const PAGE_SIZE = 10;
 
   const CAT = window.Store.CATALOG;
-  const items = CAT[tab] || [];
+  const isCarriedTab = tab === 'carried';
 
-  // Inventory entries for this tab
-  const inv = s.inventory[tab] || {};
+  // 所持品タブ: ホットバー10スロットをそのまま表示
+  const hotbar = s.carried?.hotbar || Array(10).fill(null);
 
-  // Filter to items the user owns >= 1
-  const owned = items.filter(it => (inv[it.id] || 0) > 0)
+  const items = isCarriedTab ? [] : (CAT[tab] || []);
+  const inv = isCarriedTab ? {} : (s.inventory[tab] || {});
+  const owned = isCarriedTab ? [] : items.filter(it => (inv[it.id] || 0) > 0)
     .filter(it => it.name.includes(search) || (it.kind || '').includes(search));
   const pageCount = Math.max(1, Math.ceil(owned.length / PAGE_SIZE));
   const pageIndex = Math.min(page, pageCount - 1);
   const pageItems = owned.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE);
-  const slots = Array.from({ length: PAGE_SIZE }, (_, i) => pageItems[i] || null);
+  const slots = isCarriedTab
+    ? hotbar.map(sl => sl ? { ...window.Store.CATALOG_MAP[sl.id], _count: sl.count } : null)
+    : Array.from({ length: PAGE_SIZE }, (_, i) => pageItems[i] || null);
+  const tabDefs = [
+    { id: 'tile', label: 'タイル', en: 'TILES' },
+    { id: 'furniture', label: '家具', en: 'FURN' },
+    { id: 'decoration', label: '装飾', en: 'DECOR' },
+    { id: 'building', label: '建物', en: 'BUILD' },
+    { id: 'farming', label: '農業', en: 'FARM' },
+    { id: 'ore', label: '鉱石', en: 'ORE' },
+    { id: 'items', label: '素材', en: 'MAT' },
+    { id: 'carried', label: '所持品', en: 'CARRY' },
+  ];
 
   React.useEffect(() => {
     setPage(0);
@@ -31,18 +44,30 @@ const Dock = ({ openModal, selected, setSelected }) => {
     if (page >= pageCount) setPage(pageCount - 1);
   }, [page, pageCount]);
 
+  React.useEffect(() => {
+    const keyToSlot = { '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8, '0': 9 };
+    const onKeyDown = (e) => {
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const key = e.key;
+      if (!(key in keyToSlot)) return;
+      const idx = keyToSlot[key];
+      const it = slots[idx];
+      if (!it || tab === 'items' || tab === 'carried') return;
+      e.preventDefault();
+      const isSelected = selected && selected.category === tab && selected.id === it.id;
+      setSelected(isSelected ? null : { category: tab, id: it.id });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [slots, tab, selected, setSelected]);
+
   return (
     <div className="dock">
       <div className="dock-inner">
         <div className="dock-tabs">
-          {[
-            { id: 'tile', label: 'タイル', en: 'TILES' },
-            { id: 'furniture', label: '家具', en: 'FURN' },
-            { id: 'building', label: '建物', en: 'BUILD' },
-            { id: 'farming', label: '農業', en: 'FARM' },
-            { id: 'ore', label: '鉱石', en: 'ORE' },
-            { id: 'items', label: 'アイテム', en: 'ITEMS' },
-          ].map(t => (
+          {tabDefs.map(t => (
             <button key={t.id} className={'dock-tab ' + (tab === t.id ? 'active' : '')} onClick={() => setTab(t.id)}>
               <span style={{ fontSize: 9, letterSpacing: '0.15em', color: 'var(--muted)' }}>{t.en}</span>
               <span className="ja">{t.label}</span>
@@ -62,8 +87,8 @@ const Dock = ({ openModal, selected, setSelected }) => {
                   </div>
                 );
               }
-              const count = inv[it.id] || 0;
-              const placeable = tab !== 'items';
+              const count = isCarriedTab ? (it._count || 0) : (inv[it.id] || 0);
+              const placeable = !isCarriedTab && tab !== 'items';
               const sel = placeable && selected && selected.category === tab && selected.id === it.id;
               return (
                 <div
@@ -91,10 +116,13 @@ const Dock = ({ openModal, selected, setSelected }) => {
             })}
           </div>
 
-          {owned.length === 0 && (
+          {!isCarriedTab && owned.length === 0 && (
             <div className="dock-empty">
               {search ? '該当アイテムなし' : '所持アイテムなし — SHOPで購入'}
             </div>
+          )}
+          {isCarriedTab && hotbar.every(s => !s) && (
+            <div className="dock-empty">SHOPのアイテムタブで購入 / E で拡張インベントリ</div>
           )}
 
           {pageCount > 1 && (

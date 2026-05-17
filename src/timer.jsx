@@ -330,7 +330,7 @@ const TimerDial = ({ minutes, onChange, label, max = 60 }) => {
     });
   }
 
-  const revolution = Math.ceil(minutes / max);
+  const revolution = Math.floor(minutes / max);
 
   return (
     <svg

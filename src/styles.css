@@ -125,6 +125,12 @@ input[type=number] { -moz-appearance: textfield; }
   flex-direction: column;
   gap: 8px;
   align-items: flex-start;
+  max-height: calc(100vh - 130px);
+  overflow: hidden;
+  pointer-events: none; /* empty space passes clicks through to dock */
+}
+.left-column > * {
+  pointer-events: auto; /* actual panels remain interactive */
 }
 
 .left-sidebar {
@@ -850,6 +856,48 @@ input[type=number] { -moz-appearance: textfield; }
   text-align: center;
 }
 
+/* -- Height breakpoints: hide cards on short windows so sidebar never covers dock -- */
+@media (max-height: 680px) {
+  .mission-card { display: none; }
+}
+@media (max-height: 560px) {
+  .char-card { padding: 8px 10px 10px; gap: 4px; }
+  .char-card .bar-row,
+  .char-card .bar { display: none; }
+}
+
+/* -- Width breakpoints: compact dock cells on narrower screens -- */
+@media (max-width: 900px) {
+  .dock-grid-wrap { padding: 6px 8px; --slot-gap: 4px; }
+  .inv-cell { height: 66px; padding-top: 5px; }
+  .inv-icon { width: 28px; height: 28px; margin-top: 1px; }
+  .inv-cell .label { margin-top: 4px; font-size: 7.5px; }
+  .inv-cell .count { font-size: 8px; }
+  .dock-actions { padding: 6px 8px 6px 4px; }
+  .dock-tab { padding: 5px 8px; min-width: 50px; }
+}
+@media (max-width: 640px) {
+  .mini-map-panel { display: none; }
+  .dock-inner { border-radius: 8px; }
+  .inv-cell { height: 56px; padding-top: 4px; }
+  .inv-icon { width: 24px; height: 24px; margin-top: 0; }
+  .inv-cell .label { font-size: 7px; margin-top: 2px; }
+  .dock-tab { min-width: 42px; padding: 4px 6px; }
+  .dock-tab .ja { font-size: 10px; }
+  .shop-btn { padding: 6px 10px; font-size: 12px; }
+  .status-window { min-width: 200px; }
+}
+@media (max-width: 480px) {
+  .dock { padding: 8px; }
+  .dock-actions .text-input { width: 60px; font-size: 11px; }
+  .dock-tab > span:first-child { display: none; } /* hide EN label, show JP only */
+  .dock-tab { min-width: 34px; padding: 5px 4px; }
+  .inv-cell .label { display: none; }
+  .inv-cell { height: 52px; }
+  .status-window { min-width: 180px; }
+  .char-name { font-size: 12px; }
+}
+
 @media (max-width: 1420px) {
   .dock-grid-wrap {
     --slot-gap: 6px;
@@ -874,9 +922,13 @@ input[type=number] { -moz-appearance: textfield; }
   .dock-tabs {
     border-right: none;
     border-bottom: 1px solid var(--line);
-    justify-content: center;
-    flex-wrap: wrap;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }
+  .dock-tabs::-webkit-scrollbar { display: none; }
   .dock-actions {
     border-left: none;
     border-top: 1px solid var(--line);
