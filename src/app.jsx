@@ -111,6 +111,8 @@ const App = () => {
       {!showcaseMode && <window.Dock openModal={openModal} selected={selectedItem} setSelected={setSelectedItem} />}
       {showcaseMode && <ShowcaseExit onExit={exitShowcaseMode} />}
       <window.ToastStack />
+      <InteractionPrompt />
+      <window.ExtendedInventory />
 
       {/* Mini hint at first launch */}
       {!showcaseMode && <KeyHint />}
@@ -189,7 +191,7 @@ const App = () => {
         />
       )}
 
-      <AdminShell />
+      <ChatLog />
     </>
   );
 };
@@ -285,6 +287,7 @@ const MiniMap = () => {
     };
     const itemColor = (category) => {
       if (category === 'furniture') return '#e0b27a';
+      if (category === 'decoration') return '#d7a48d';
       if (category === 'building') return '#c78963';
       if (category === 'farming') return '#88b07d';
       if (category === 'ore') return '#94b8ce';
@@ -428,87 +431,181 @@ const GameConfirmModal = ({ state, onConfirm, onCancel }) => {
   );
 };
 
-// ---------- Admin Shell ----------
-const AdminShell = () => {
+// ---------- Chat Log ----------
+const ChatLog = () => {
   const [open, setOpen] = React.useState(false);
   const [input, setInput] = React.useState('');
   const [log, setLog] = React.useState([]);
   const inputRef = React.useRef(null);
+  const logRef  = React.useRef(null);
+
+  // Auto-scroll to bottom on new entries
+  React.useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [log]);
+
+  // Focus input when opened
+  React.useEffect(() => {
+    if (open && inputRef.current) inputRef.current.focus();
+  }, [open]);
 
   React.useEffect(() => {
     const onKey = (e) => {
-      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) return;
-      if (e.key.toLowerCase() === 't') {
+      const inInput = e.target && (
+        e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable
+      );
+      // T — toggle open/close
+      if (e.key.toLowerCase() === 't' && !inInput) {
         e.preventDefault();
         setOpen(o => !o);
+        return;
+      }
+      // / — open and pre-fill '/'
+      if (e.key === '/' && !inInput) {
+        e.preventDefault();
+        setOpen(true);
+        setInput('/');
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.setSelectionRange(1, 1);
+          }
+        }, 30);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  React.useEffect(() => {
-    if (open && inputRef.current) inputRef.current.focus();
-  }, [open]);
-
-  function exec(cmd) {
-    const parts = cmd.trim().split(/\s+/);
+  function execCommand(raw) {
+    const parts = raw.trim().split(/\s+/);
     const c = parts[0];
     if (c === '/get') {
       const res = parts[1];
       const n = parseInt(parts[2], 10);
-      if (res === 'DUST' && n > 0) {
-        window.Store.addDust(n);
-        return `+${n} DUST`;
-      }
-      return `usage: /get DUST <amount>`;
+      if (res === 'DUST' && n > 0) { window.Store.addDust(n); return `+${n} DUST`; }
+      return 'usage: /get DUST <amount>';
     }
     return `unknown: ${c}`;
   }
 
   const submit = (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    const out = exec(input.trim());
-    setLog(l => [...l.slice(-24), { cmd: input.trim(), out }]);
+    const text = input.trim();
+    if (!text) return;
+    if (text.startsWith('/')) {
+      const out = execCommand(text);
+      setLog(l => [...l.slice(-49), { type: 'cmd', cmd: text, out }]);
+    } else {
+      setLog(l => [...l.slice(-49), { type: 'chat', name: 'プレイヤー', text }]);
+    }
     setInput('');
   };
 
   if (!open) return null;
   return (
     <div style={{
-      position: 'fixed', bottom: 68, left: 16, width: 340,
-      background: 'rgba(6,4,2,0.93)', border: '1px solid #3a3028',
-      borderRadius: 5, padding: '8px 12px', zIndex: 1200,
+      position: 'fixed', bottom: 68, left: 16, width: 360,
+      background: 'rgba(6,4,2,0.94)', border: '1px solid #3a3028',
+      borderRadius: 6, zIndex: 1200,
       fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#c8b896',
+      display: 'flex', flexDirection: 'column',
+      boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
     }}>
-      <div style={{ color: '#5a4a3a', marginBottom: 6, letterSpacing: 1 }}>ADMIN SHELL — T to close</div>
-      <div style={{ maxHeight: 130, overflowY: 'auto', marginBottom: 6 }}>
-        {log.map((l, i) => (
-          <div key={i} style={{ marginBottom: 3 }}>
-            <div style={{ color: '#7a6a5a' }}>&gt; {l.cmd}</div>
-            <div style={{ color: '#90c870', paddingLeft: 8 }}>{l.out}</div>
-          </div>
-        ))}
+      {/* Header */}
+      <div style={{
+        padding: '6px 12px', borderBottom: '1px solid #2a2018',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <span style={{ color: '#5a4a3a', letterSpacing: 1 }}>CHAT LOG</span>
+        <span style={{ color: '#3a3028', fontSize: 10 }}>T で閉じる</span>
       </div>
-      <form onSubmit={submit} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+
+      {/* Log */}
+      <div ref={logRef} style={{ height: 190, overflowY: 'auto', padding: '8px 12px' }}>
+        {log.length === 0 && (
+          <div style={{ color: '#3a3028', fontStyle: 'italic' }}>/ でコマンド、それ以外はチャット</div>
+        )}
+        {log.map((entry, i) =>
+          entry.type === 'chat' ? (
+            <div key={i} style={{ marginBottom: 3 }}>
+              <span style={{ color: '#78b878' }}>{entry.name}</span>
+              <span style={{ color: '#5a4a3a' }}>: </span>
+              <span style={{ color: '#c8b896' }}>{entry.text}</span>
+            </div>
+          ) : (
+            <div key={i} style={{ marginBottom: 3 }}>
+              <div style={{ color: '#7a6a5a' }}>&gt; {entry.cmd}</div>
+              <div style={{ color: '#90c870', paddingLeft: 8 }}>{entry.out}</div>
+            </div>
+          )
+        )}
+      </div>
+
+      {/* Input */}
+      <form onSubmit={submit} style={{
+        display: 'flex', gap: 6, alignItems: 'center',
+        padding: '6px 12px', borderTop: '1px solid #2a2018',
+      }}>
         <span style={{ color: '#5a4a3a' }}>&gt;</span>
         <input
           ref={inputRef}
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="/get DUST 100"
+          onKeyDown={e => { if (e.key === 'Escape') { setOpen(false); e.preventDefault(); } }}
+          placeholder="メッセージ or /get DUST 100"
           style={{
             flex: 1, background: 'transparent', border: 'none',
-            borderBottom: '1px solid #3a3028', color: '#c8b896',
+            borderBottom: '1px solid #2a2018', color: '#c8b896',
             fontFamily: 'inherit', fontSize: 11, outline: 'none', padding: '2px 0',
           }}
         />
-        <button type="submit" style={{
-          background: '#2a2018', border: '1px solid #3a3028', color: '#a09070',
-          padding: '2px 8px', borderRadius: 3, cursor: 'pointer', fontSize: 10,
-        }}>実行</button>
       </form>
+    </div>
+  );
+};
+
+const InteractionPrompt = () => {
+  const [prompt, setPrompt] = React.useState(null);
+
+  React.useLayoutEffect(() => {
+    window.setInteractionPrompt = setPrompt;
+    return () => { window.setInteractionPrompt = null; };
+  }, []);
+
+  if (!prompt) return null;
+  return (
+    <div style={{
+      position: 'fixed',
+      left: prompt.x,
+      top: prompt.y - 12,
+      transform: 'translateX(-50%) translateY(-100%)',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      background: 'rgba(18,14,11,0.82)',
+      border: '1px solid var(--line)',
+      borderRadius: 6,
+      padding: '6px 14px',
+      fontFamily: 'var(--font-jp)',
+      fontSize: 13,
+      color: 'var(--ink)',
+      pointerEvents: 'none',
+      userSelect: 'none',
+      backdropFilter: 'blur(4px)',
+      whiteSpace: 'nowrap',
+    }}>
+      <span style={{
+        background: 'var(--panel-raised)',
+        border: '1px solid var(--dust-soft)',
+        borderRadius: 4,
+        padding: '1px 7px',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 11,
+        color: 'var(--dust)',
+        letterSpacing: '0.05em',
+      }}>{prompt.key}</span>
+      <span style={{ color: 'var(--ink-soft)' }}>{prompt.label}</span>
     </div>
   );
 };

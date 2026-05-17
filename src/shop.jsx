@@ -1,5 +1,5 @@
 /* ============================================================
-   SHOP — buy expansion tiles / furniture / buildings / farming / ore
+   SHOP — buy tiles / furniture / decoration / buildings / farming / ore / items
    ============================================================ */
 
 const shopStyles = {
@@ -22,6 +22,16 @@ const Shop = () => {
   const s = window.useStore();
   const [tab, setTab] = React.useState('tile');
   const [search, setSearch] = React.useState('');
+  const tabs = [
+    { id: 'tile',       label: 'タイル' },
+    { id: 'furniture',  label: '家具' },
+    { id: 'decoration', label: '装飾' },
+    { id: 'building',   label: '建物' },
+    { id: 'farming',    label: '農業' },
+    { id: 'ore',        label: '鉱石' },
+    { id: 'items',      label: '素材' },
+    { id: 'carry',      label: 'アイテム' },
+  ];
 
   const CATALOG = window.Store.CATALOG;
   const items = (CATALOG[tab] || []).filter(it =>
@@ -29,22 +39,22 @@ const Shop = () => {
   );
 
   const buy = (it) => {
-    const ok = window.Store.buyItem(tab, it.id);
+    if (!Number.isFinite(it.price)) {
+      window.toast('このアイテムは現在販売対象外です', 'warn');
+      return;
+    }
+    const ok = tab === 'carry'
+      ? window.Store.buyCarryItem(it.id)
+      : window.Store.buyItem(tab, it.id);
     if (ok) window.toast('購入: ' + it.name + ' (-' + it.price + ' DUST)', 'success');
-    else window.toast('DUST が足りません', 'warn');
+    else window.toast(tab === 'carry' ? 'DUST不足またはバッグが満杯です' : 'DUST が足りません', 'warn');
   };
 
   return (
     <div style={shopStyles.body}>
       <div style={shopStyles.toolbar}>
         <div style={shopStyles.tabs}>
-          {[
-            { id: 'tile',      label: 'タイル' },
-            { id: 'furniture', label: '家具' },
-            { id: 'building',  label: '建物' },
-            { id: 'farming',   label: '農業' },
-            { id: 'ore',       label: '鉱石' },
-          ].map(t => (
+          {tabs.map(t => (
             <button key={t.id} style={shopStyles.tab(tab === t.id)} onClick={() => setTab(t.id)}>{t.label}</button>
           ))}
         </div>
@@ -66,7 +76,12 @@ const Shop = () => {
       <div style={shopStyles.body2}>
         <div style={shopStyles.grid}>
           {items.map(it => {
-            const canAfford = s.currency.dust >= it.price;
+            const isForSale = Number.isFinite(it.price);
+            const canAfford = isForSale && s.currency.dust >= it.price;
+            const ownedCount = tab === 'carry'
+              ? [...(s.carried?.hotbar || []), ...(s.carried?.bag || [])]
+                  .filter(sl => sl?.id === it.id).reduce((a, sl) => a + (sl?.count || 0), 0)
+              : (s.inventory[tab]?.[it.id] || 0);
             return (
               <div
                 key={it.id}
@@ -82,7 +97,7 @@ const Shop = () => {
                   <div style={shopStyles.cardKind}>{it.kind}{it.mergeCap ? ` · 合体×${it.mergeCap}` : ''}{it.harvestMin ? ` · 採取 ${it.harvestMin}分` : ''}</div>
                 </div>
                 <div style={shopStyles.cardFoot}>
-                  <span style={shopStyles.price}>{it.price} DUST</span>
+                  <span style={shopStyles.price}>{isForSale ? `${it.price} DUST` : '販売未対応'}</span>
                   <button
                     className={'btn small ' + (canAfford ? 'primary' : 'ghost')}
                     disabled={!canAfford}
@@ -94,7 +109,7 @@ const Shop = () => {
                 </div>
                 {/* Owned count */}
                 <div style={{ fontSize: 10, color: 'var(--muted)', textAlign: 'right', fontFamily: 'var(--font-mono)' }}>
-                  所有 × {(s.inventory[tab]?.[it.id] || 0)}
+                  所有 × {ownedCount}
                 </div>
               </div>
             );

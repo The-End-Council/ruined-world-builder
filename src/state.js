@@ -16,7 +16,7 @@
   const SEASONS = ['spring', 'summer', 'autumn', 'winter'];
   const WEATHER_MODES = ['clear', 'cloudy', 'rain', 'storm', 'snow'];
   const SPECIAL_WEATHERS = ['night_starry', 'seabed', 'collapse', 'blood_moon'];
-  const WORLD_CATEGORIES = ['tile', 'furniture', 'building', 'farming', 'ore', 'items'];
+  const WORLD_CATEGORIES = ['tile', 'furniture', 'decoration', 'building', 'farming', 'ore', 'items'];
   const STARTER_TILES = [
     { x: 0, z: 0, type: 'soil_ash' },
     { x: 1, z: 0, type: 'soil_ash', item: 'desk_iron',  itemCategory: 'furniture', itemRotation: 0 },
@@ -44,6 +44,8 @@
       { id: 'chair_iron',   name: '鉄製の椅子',   kind: '椅子', price: 1 },
       { id: 'shelf_rust',   name: '錆びた棚',     kind: '収納', price: 2 },
       { id: 'bed_iron',     name: '鉄製ベッド',   kind: '休憩', price: 3 },
+    ],
+    decoration: [
       { id: 'lamp_broken',  name: '折れた街灯',   kind: '装飾', price: 2 },
       { id: 'drum_oil',     name: 'ドラム缶',     kind: '装飾', price: 1 },
     ],
@@ -65,6 +67,16 @@
       { id: 'wood_rotten',  name: '腐った木材',   kind: '素材', price: null },
       { id: 'herb_dry',     name: '乾いた草',     kind: '植物', price: null },
       { id: 'dust_shard',   name: '塵の欠片',     kind: '素材', price: null },
+    ],
+    carry: [
+      { id: 'food_ration',   name: '非常食',           kind: '消耗品', price: 5  },
+      { id: 'medkit_worn',   name: '応急処置キット',   kind: '医療',   price: 20 },
+      { id: 'flashlight',    name: 'フラッシュライト', kind: '道具',   price: 30 },
+      { id: 'rope_old',      name: '古いロープ',       kind: '道具',   price: 10 },
+      { id: 'notebook_worn', name: 'ノート',           kind: '道具',   price: 5  },
+      { id: 'canteen',       name: 'カンテラ',         kind: '道具',   price: 8  },
+      { id: 'compass_old',   name: '古いコンパス',     kind: '道具',   price: 15 },
+      { id: 'smoke_flare',   name: '発煙筒',           kind: '消耗品', price: 12 },
     ],
   };
 
@@ -102,10 +114,15 @@
       inventory: {
         tile: { soil_barren: 2, soil_ash: 1 },
         furniture: { desk_iron: 0, chair_iron: 0 },
+        decoration: {},
         building: {},
         farming: {},
         ore: {},
         items: {}, // generic resources (DUST is currency)
+      },
+      carried: {
+        hotbar: Array(10).fill(null),
+        bag:    Array(30).fill(null),
       },
       tasks: {
         statuses: [
@@ -341,6 +358,8 @@
     if (!next.world.spawnTile) next.world.spawnTile = { x: 0, z: 0 };
 
     next.inventory = ensureInventoryShape(next.inventory);
+    migrateLegacyDecorationInventory(next.inventory);
+    next.carried = ensureCarriedShape(next.carried);
     next.tasks = next.tasks || fallback.tasks;
     next.timer = { ...(fallback.timer || {}), ...(next.timer || {}) };
     next.stats = next.stats || fallback.stats;
@@ -473,6 +492,85 @@
     return next;
   }
 
+  function ensureCarriedShape(c) {
+    return {
+      hotbar: Array(10).fill(null).map((_, i) => c?.hotbar?.[i] ?? null),
+      bag:    Array(30).fill(null).map((_, i) => c?.bag?.[i]    ?? null),
+    };
+  }
+
+  function cloneCarried(c) {
+    return {
+      hotbar: (c?.hotbar || []).map(s => s ? { ...s } : null),
+      bag:    (c?.bag    || []).map(s => s ? { ...s } : null),
+    };
+  }
+
+  function buyCarryItem(id) {
+    const it = CATALOG_MAP[id];
+    if (!it || it.category !== 'carry') return false;
+    if (!Number.isFinite(it.price) || it.price < 0) return false;
+    let ok = false;
+    set(s => {
+      if (s.currency.dust < it.price) return s;
+      const carried = cloneCarried(s.carried);
+      // Stack onto existing slot
+      for (const zone of ['bag', 'hotbar']) {
+        for (let i = 0; i < carried[zone].length; i++) {
+          if (carried[zone][i]?.id === id) {
+            carried[zone][i] = { id, count: carried[zone][i].count + 1 };
+            ok = true;
+            return { ...s, currency: { ...s.currency, dust: s.currency.dust - it.price }, carried };
+          }
+        }
+      }
+      // First empty slot
+      for (const zone of ['bag', 'hotbar']) {
+        for (let i = 0; i < carried[zone].length; i++) {
+          if (!carried[zone][i]) {
+            carried[zone][i] = { id, count: 1 };
+            ok = true;
+            return { ...s, currency: { ...s.currency, dust: s.currency.dust - it.price }, carried };
+          }
+        }
+      }
+      return s; // full
+    });
+    return ok;
+  }
+
+  function moveCarriedSlot(from, to) {
+    // from / to: { zone: 'hotbar'|'bag', index: number }
+    set(s => {
+      const carried = cloneCarried(s.carried);
+      const fArr = carried[from.zone];
+      const tArr = carried[to.zone];
+      const tmp = tArr[to.index];
+      tArr[to.index] = fArr[from.index];
+      fArr[from.index] = tmp;
+      return { ...s, carried };
+    });
+  }
+
+  function removeCarriedSlot(zone, index) {
+    set(s => {
+      const carried = cloneCarried(s.carried);
+      carried[zone][index] = null;
+      return { ...s, carried };
+    });
+  }
+
+  function migrateLegacyDecorationInventory(inv) {
+    if (!inv || !inv.furniture) return;
+    if (!inv.decoration) inv.decoration = {};
+    ['lamp_broken', 'drum_oil'].forEach((id) => {
+      const legacy = Number(inv.furniture[id] || 0);
+      if (legacy <= 0) return;
+      inv.decoration[id] = (inv.decoration[id] || 0) + legacy;
+      delete inv.furniture[id];
+    });
+  }
+
   function addInventoryCount(inv, category, id, amount = 1) {
     if (!category || !id || !Number.isFinite(amount) || amount <= 0) return;
     if (!inv[category]) inv[category] = {};
@@ -489,7 +587,7 @@
   function returnWorldToInventory(inv, tiles, includeTiles = false) {
     (tiles || []).forEach(t => {
       if (includeTiles) addInventoryCount(inv, 'tile', t.type, 1);
-      const itemCategory = t.itemCategory || (t.item ? CATALOG_MAP[t.item]?.category : null);
+      const itemCategory = t.item ? (CATALOG_MAP[t.item]?.category || t.itemCategory) : null;
       if (t.item && itemCategory) addInventoryCount(inv, itemCategory, t.item, 1);
     });
   }
@@ -527,7 +625,7 @@
     return true;
   }
 
-  // Place a tile or item on a coordinate. type = 'tile' | 'furniture' | 'building' | 'farming' | 'ore'
+  // Place a tile or item on a coordinate. type = 'tile' | 'furniture' | 'decoration' | 'building' | 'farming' | 'ore'
   function placeAt(category, id, x, z, rotation = 0) {
     set(s => {
       const tiles = [...s.world.tiles];
@@ -673,7 +771,7 @@
 
       if (tile.item) {
         const itemId = tile.item;
-        const itemCategory = tile.itemCategory || CATALOG_MAP[itemId]?.category || null;
+        const itemCategory = CATALOG_MAP[itemId]?.category || tile.itemCategory || null;
         if (itemCategory) addInventoryCount(inv, itemCategory, itemId, 1);
         const { item, itemCategory: _, itemRotation, ...rest } = tile;
         tiles[idx] = { ...rest };
@@ -885,8 +983,14 @@
       return { ...s, character: { ...s.character, position: { x: nx, z: nz } } };
     });
   }
+  let _charPosSaveTimer = null;
   function setCharacterPos(x, z) {
-    set(s => ({ ...s, character: { ...s.character, position: { x, z } } }));
+    // Update state + notify listeners immediately (no localStorage, no slot sync)
+    state = { ...state, character: { ...state.character, position: { x, z } } };
+    listeners.forEach(fn => fn(state));
+    // Debounce the expensive localStorage write to avoid blocking the render loop
+    clearTimeout(_charPosSaveTimer);
+    _charPosSaveTimer = setTimeout(() => { save(state); }, 2000);
   }
 
   // ---------- Export ----------
@@ -904,5 +1008,6 @@
     setTimerConfig, setSettings,
     claimDaily, claimMission,
     moveCharacter, setCharacterPos,
+    buyCarryItem, moveCarriedSlot, removeCarriedSlot,
   };
 })();

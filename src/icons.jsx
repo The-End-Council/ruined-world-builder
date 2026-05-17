@@ -157,59 +157,149 @@ const ItemGlyph = ({ id, size = 36 }) => {
 
     case 'soil_ash':
       return <svg width={size} height={size} viewBox={v}>
-        <polygon points={CT} fill="#706c68"/>
-        <polygon points={CL} fill="#484440"/>
-        <polygon points={CR} fill="#30302e"/>
-        <circle cx="18" cy="14" r="2.5" fill="#484440"/>
-        <circle cx="30" cy="18" r="2.5" fill="#484440"/>
-        <circle cx="23" cy="23" r="1.8" fill="#484440"/>
+        <polygon points={CT} fill="#b2aba0"/>
+        <polygon points={CL} fill="#7d7569"/>
+        <polygon points={CR} fill="#675f54"/>
+        {/* soft ash highlight */}
+        <polygon points="24,8 37,15 24,22 11,15" fill="#d8d3ca" fillOpacity="0.42"/>
+        {/* thin cracks */}
+        <path d="M14 14l7 6M27 12l3 5M20 21l4-3" stroke="#6a6258" strokeWidth="0.75" fill="none" strokeOpacity="0.58"/>
+        {/* soot stains */}
+        <ellipse cx="16" cy="20" rx="3.2" ry="1.8" fill="#2a241f" fillOpacity="0.30"/>
+        <ellipse cx="31" cy="16" rx="2.8" ry="1.6" fill="#2a241f" fillOpacity="0.26"/>
+        {/* ash grains + pebbles */}
+        <circle cx="18" cy="13.6" r="1.5" fill="#ddd9d1"/>
+        <circle cx="26" cy="19.4" r="1.2" fill="#c5bdb1"/>
+        <circle cx="21.2" cy="18.4" r="1.8" fill="#8b8276"/>
+        <circle cx="30.5" cy="21.2" r="1.4" fill="#766d62"/>
+        {/* subtle reflective fleck */}
+        <rect x="22.4" y="15.8" width="3.6" height="0.9" rx="0.45" fill="#ece8e0" fillOpacity="0.42" transform="rotate(-18 24.2 16.2)"/>
       </svg>;
 
     case 'soil_toxic':
       return <svg width={size} height={size} viewBox={v}>
-        <polygon points={CT} fill="#5a7030"/>
-        <polygon points={CL} fill="#3a4820"/>
-        <polygon points={CR} fill="#263014"/>
-        <path d="M15 13l2 6 3-2M27 11l2 6 3-2" stroke="#9bcc6a" strokeWidth="1" fill="none"/>
-        <circle cx="24" cy="22" r="2.5" fill="#7acc40"/>
+        <polygon points={CT} fill="#748662"/>
+        <polygon points={CL} fill="#4f5f44"/>
+        <polygon points={CR} fill="#3d4b36"/>
+        {/* muted contaminated traces */}
+        <ellipse cx="18" cy="18.8" rx="4.2" ry="2.3" fill="#819767" fillOpacity="0.40" transform="rotate(-18 18 18.8)"/>
+        <ellipse cx="29.5" cy="14.8" rx="3.3" ry="2.0" fill="#6f8658" fillOpacity="0.36" transform="rotate(22 29.5 14.8)"/>
+        {/* soft cracks */}
+        <path d="M13 14l6 6M24 12l3 5M19 21l4-3" stroke="#454b39" strokeWidth="0.75" fill="none" strokeOpacity="0.62"/>
+        {/* blackened remains */}
+        <ellipse cx="15.8" cy="21.5" rx="2.9" ry="1.6" fill="#2b3025" fillOpacity="0.28"/>
+        <ellipse cx="31.2" cy="17.6" rx="2.5" ry="1.4" fill="#2b3025" fillOpacity="0.24"/>
+        {/* pebbles and grains */}
+        <circle cx="17.8" cy="13.8" r="1.4" fill="#b8ba9f"/>
+        <circle cx="26.2" cy="19.2" r="1.2" fill="#9da185"/>
+        <circle cx="21.1" cy="18.1" r="1.7" fill="#72785f"/>
+        <circle cx="30.3" cy="21.1" r="1.3" fill="#5a624f"/>
+        {/* dead grass debris */}
+        <path d="M12.5 24.5l1.0-3.0M34 23.5l-0.9-2.7M22.8 25l0.6-2.2" stroke="#7a8263" strokeWidth="0.8" strokeOpacity="0.85" fill="none"/>
+        {/* faint sheen */}
+        <rect x="22.2" y="15.9" width="3.3" height="0.85" rx="0.42" fill="#dbe3d2" fillOpacity="0.24" transform="rotate(-15 23.8 16.3)"/>
       </svg>;
 
     case 'soil_cracked':
       return <svg width={size} height={size} viewBox={v}>
-        <polygon points={CT} fill="#5a4028"/>
-        <polygon points={CL} fill="#3a2818"/>
-        <polygon points={CR} fill="#281a0e"/>
-        <path d="M12 11l6 9-2 7M28 9l3 10 5-2" stroke="#281a0e" strokeWidth="0.9" fill="none"/>
+        <polygon points={CT} fill="#9b8469"/>
+        <polygon points={CL} fill="#6e5a46"/>
+        <polygon points={CR} fill="#584738"/>
+        {/* major deep cracks */}
+        <path d="M10 14l12 9M20 9l10 10M25 23l9-9" stroke="#251c15" strokeWidth="1.35" fill="none" strokeOpacity="0.86"/>
+        {/* crack edges */}
+        <path d="M10.4 14.8l11 8.3M20.8 9.8l8.8 8.7M25.6 22.6l7.9-8.0" stroke="#4a3a2b" strokeWidth="0.72" fill="none" strokeOpacity="0.55"/>
+        {/* crumbled chunks */}
+        <rect x="12.4" y="21.0" width="3.5" height="2.2" rx="0.4" fill="#ad9678" transform="rotate(-16 14.1 22.1)"/>
+        <rect x="28.0" y="17.8" width="3.1" height="2.0" rx="0.4" fill="#8c755c" transform="rotate(14 29.5 18.8)"/>
+        <rect x="20.4" y="24.1" width="2.8" height="1.7" rx="0.35" fill="#b9a184" transform="rotate(-10 21.8 25.0)"/>
+        {/* pebbles */}
+        <circle cx="16.7" cy="13.5" r="1.3" fill="#bea88a"/>
+        <circle cx="27.1" cy="20.2" r="1.2" fill="#927961"/>
+        <circle cx="31.6" cy="13.9" r="1.0" fill="#a48a6e"/>
+        {/* dry grass remnants */}
+        <path d="M13.2 25.2l0.9-2.8M33.2 22.8l-0.8-2.4M24.4 26.1l0.6-2.1" stroke="#8f7b5e" strokeWidth="0.82" strokeOpacity="0.88" fill="none"/>
+        {/* slight dry sheen */}
+        <rect x="22.1" y="15.7" width="3.2" height="0.82" rx="0.4" fill="#e8dcc9" fillOpacity="0.22" transform="rotate(-14 23.7 16.1)"/>
       </svg>;
 
     case 'path_broken':
       return <svg width={size} height={size} viewBox={v}>
-        <polygon points={CT} fill="#8a8278"/>
-        <polygon points={CL} fill="#5a564e"/>
-        <polygon points={CR} fill="#3c3a36"/>
-        <rect x="12" y="10" width="10" height="7" fill="#a09890" rx="0.5"/>
-        <rect x="27" y="13" width="8" height="7" fill="#a09890" rx="0.5"/>
-        <rect x="20" y="19" width="7" height="6" fill="#a09890" rx="0.5"/>
+        <polygon points={CT} fill="#746d66"/>
+        <polygon points={CL} fill="#524d47"/>
+        <polygon points={CR} fill="#3a3734"/>
+        {/* deep road cracks */}
+        <path d="M9.8 15.1l13.4 8.6M19.8 9.8l10.7 9.7M24.7 24l9-8.7" stroke="#23211f" strokeWidth="1.26" fill="none" strokeOpacity="0.84"/>
+        {/* crack edges */}
+        <path d="M10.6 15.7l12.0 7.8M20.6 10.4l9.6 8.8M25.4 23.4l8.1-7.7" stroke="#4e4943" strokeWidth="0.68" fill="none" strokeOpacity="0.56"/>
+        {/* collapsed paving remnants */}
+        <rect x="11.8" y="11.4" width="8.3" height="5.7" rx="0.5" fill="#8a837a" transform="rotate(10 16 14.2)"/>
+        <rect x="26.8" y="13.7" width="7.6" height="5.4" rx="0.5" fill="#726b63" transform="rotate(-12 30.6 16.4)"/>
+        <rect x="19.5" y="20.2" width="6.5" height="4.7" rx="0.45" fill="#93867b" transform="rotate(8 22.8 22.5)"/>
+        {/* chipped edges */}
+        <path d="M8.7 23.6l3.7-1.3 1.5 2.0-4.1 1.2z" fill="#322f2c" fillOpacity="0.48"/>
+        <path d="M34.8 16.9l2.8-1.0 1.0 1.6-3.2 1.1z" fill="#322f2c" fillOpacity="0.42"/>
+        {/* rubble + pebbles */}
+        <circle cx="17.4" cy="13.8" r="1.3" fill="#9c9286"/>
+        <circle cx="27.2" cy="20.3" r="1.2" fill="#6a625a"/>
+        <circle cx="31.1" cy="14.4" r="1.0" fill="#84786c"/>
+        <rect x="14.1" y="24.1" width="2.3" height="1.4" rx="0.3" fill="#7b6f63" transform="rotate(-14 15.2 24.8)"/>
+        <rect x="29.3" y="21.8" width="2.0" height="1.3" rx="0.3" fill="#696057" transform="rotate(12 30.3 22.5)"/>
+        {/* dry dust veil */}
+        <ellipse cx="21.7" cy="17.2" rx="3.5" ry="1.7" fill="#b8ab99" fillOpacity="0.22" transform="rotate(-10 21.7 17.2)"/>
+        {/* subtle calm highlight */}
+        <rect x="22.4" y="15.8" width="3.1" height="0.8" rx="0.4" fill="#ddd3c4" fillOpacity="0.20" transform="rotate(-16 24 16.2)"/>
       </svg>;
 
     case 'water_murky':
       return <svg width={size} height={size} viewBox={v}>
-        <polygon points={CT} fill="#2e5268"/>
-        <polygon points={CL} fill="#1c3442"/>
-        <polygon points={CR} fill="#10222c"/>
-        <path d="M10 15c3-2 5 2 8 0s5 2 8 0 5 2 8 0" stroke="#5a90b0" strokeWidth="1.1" fill="none"/>
-        <path d="M12 22c3-2 5 2 8 0s5 2 8 0" stroke="#5a90b0" strokeWidth="1.1" fill="none"/>
+        <polygon points={CT} fill="#5b7579"/>
+        <polygon points={CL} fill="#3c5259"/>
+        <polygon points={CR} fill="#2b3e45"/>
+        {/* muddy shallow bed patches */}
+        <ellipse cx="17.6" cy="18.8" rx="4.0" ry="2.1" fill="#7a6d5e" fillOpacity="0.30" transform="rotate(18 17.6 18.8)"/>
+        <ellipse cx="29.8" cy="14.9" rx="3.3" ry="1.9" fill="#675e52" fillOpacity="0.28" transform="rotate(-16 29.8 14.9)"/>
+        {/* gentle ripples */}
+        <ellipse cx="16.4" cy="15.0" rx="2.2" ry="1.0" stroke="#9dc0c8" strokeWidth="0.65" fill="none" strokeOpacity="0.62"/>
+        <ellipse cx="27.4" cy="20.1" rx="1.9" ry="0.9" stroke="#9dc0c8" strokeWidth="0.62" fill="none" strokeOpacity="0.56"/>
+        <ellipse cx="22.2" cy="13.0" rx="1.4" ry="0.7" stroke="#8ab0b8" strokeWidth="0.56" fill="none" strokeOpacity="0.52"/>
+        {/* submerged pebbles */}
+        <circle cx="14.6" cy="13.8" r="1.2" fill="#b0b1a4"/>
+        <circle cx="23.1" cy="19.3" r="1.1" fill="#7f8179"/>
+        <circle cx="31.2" cy="16.2" r="1.0" fill="#6f675d"/>
+        {/* dry grass remnants */}
+        <path d="M11.8 24.5l0.9-2.7M33.8 22.6l-0.8-2.3M24.6 25.5l0.6-2.0" stroke="#8f846e" strokeWidth="0.78" strokeOpacity="0.84" fill="none"/>
+        {/* thin dirty film + calm sheen */}
+        <ellipse cx="22.3" cy="17.1" rx="3.5" ry="1.6" fill="#c8d2cd" fillOpacity="0.18" transform="rotate(-10 22.3 17.1)"/>
+        <rect x="21.9" y="15.7" width="3.4" height="0.85" rx="0.42" fill="#e1eaeb" fillOpacity="0.26" transform="rotate(-14 23.6 16.1)"/>
       </svg>;
 
     case 'brick_ruin':
       return <svg width={size} height={size} viewBox={v}>
-        <polygon points={CT} fill="#9a5a48"/>
-        <polygon points={CL} fill="#623a2e"/>
-        <polygon points={CR} fill="#42261e"/>
-        <line x1="6" y1="17" x2="42" y2="18" stroke="#623a2e" strokeWidth="0.9"/>
-        <line x1="8" y1="23" x2="40" y2="24" stroke="#623a2e" strokeWidth="0.9"/>
-        <line x1="18" y1="8" x2="13" y2="27" stroke="#623a2e" strokeWidth="0.6"/>
-        <line x1="32" y1="7" x2="27" y2="27" stroke="#623a2e" strokeWidth="0.6"/>
+        <polygon points={CT} fill="#996251"/>
+        <polygon points={CL} fill="#67483b"/>
+        <polygon points={CR} fill="#4a342b"/>
+        {/* broken brick rows */}
+        <rect x="9.2" y="11.2" width="8.8" height="5.3" rx="0.45" fill="#b07058" transform="rotate(7 13.6 13.8)"/>
+        <rect x="20.0" y="10.5" width="8.1" height="5.0" rx="0.42" fill="#985d49" transform="rotate(-5 24.0 13.0)"/>
+        <rect x="30.0" y="11.3" width="7.4" height="4.8" rx="0.4" fill="#84584a" transform="rotate(6 33.7 13.7)"/>
+        <rect x="10.4" y="18.0" width="8.0" height="4.8" rx="0.42" fill="#c07e62" transform="rotate(-8 14.4 20.4)"/>
+        <rect x="20.8" y="18.4" width="8.8" height="5.1" rx="0.45" fill="#a86650" transform="rotate(6 25.2 21.0)"/>
+        <rect x="31.2" y="18.7" width="6.7" height="4.4" rx="0.38" fill="#8a5b4b" transform="rotate(-7 34.6 20.9)"/>
+        {/* soil/sand in gaps */}
+        <path d="M9.8 16.7h28.0M11.0 24.1h25.8" stroke="#6a5a4c" strokeWidth="1.0" strokeOpacity="0.56"/>
+        {/* fracture traces */}
+        <path d="M14.2 14.3l5.2 3.5M24.8 13.8l4.4 4.0M31.0 21.7l3.5-3.1" stroke="#3f2f27" strokeWidth="0.78" fill="none" strokeOpacity="0.70"/>
+        <path d="M14.5 14.8l4.7 3.2M25.1 14.3l4.0 3.6M31.4 21.3l3.1-2.8" stroke="#6a5043" strokeWidth="0.45" fill="none" strokeOpacity="0.46"/>
+        {/* chipped fragments + pebbles */}
+        <rect x="7.8" y="21.2" width="2.3" height="1.4" rx="0.3" fill="#915f4f" transform="rotate(18 8.9 21.9)"/>
+        <rect x="27.8" y="24.0" width="2.0" height="1.3" rx="0.3" fill="#ad735b" transform="rotate(-12 28.8 24.6)"/>
+        <circle cx="16.7" cy="24.3" r="1.15" fill="#b6a894"/>
+        <circle cx="33.1" cy="16.7" r="1.0" fill="#8e8275"/>
+        {/* dry grass remnants */}
+        <path d="M12.1 26.2l0.8-2.4M36.2 24.3l-0.8-2.1M23.6 26.9l0.6-1.9" stroke="#9a8a72" strokeWidth="0.78" strokeOpacity="0.85" fill="none"/>
+        {/* warm subtle sheen */}
+        <rect x="22.0" y="15.7" width="3.2" height="0.82" rx="0.4" fill="#f0ddc8" fillOpacity="0.22" transform="rotate(-14 23.6 16.1)"/>
       </svg>;
 
     /* Farming — original 2D */
