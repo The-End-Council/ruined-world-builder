@@ -23,7 +23,7 @@ const Dock = ({ openModal, selected, setSelected }) => {
   const pageIndex = Math.min(page, pageCount - 1);
   const pageItems = owned.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE);
   const slots = isCarriedTab
-    ? hotbar.map(sl => sl ? { ...window.Store.CATALOG_MAP[sl.id], _count: sl.count } : null)
+    ? hotbar.map(sl => sl ? { ...window.Store.CATALOG_MAP[sl.id], _count: sl.count, _uses: sl.uses } : null)
     : Array.from({ length: PAGE_SIZE }, (_, i) => pageItems[i] || null);
   const tabDefs = [
     { id: 'tile', label: 'タイル', en: 'TILES' },
@@ -54,10 +54,11 @@ const Dock = ({ openModal, selected, setSelected }) => {
       if (!(key in keyToSlot)) return;
       const idx = keyToSlot[key];
       const it = slots[idx];
-      if (!it || tab === 'items' || tab === 'carried') return;
+      if (!it) return;
       e.preventDefault();
-      const isSelected = selected && selected.category === tab && selected.id === it.id;
-      setSelected(isSelected ? null : { category: tab, id: it.id });
+      const cat = tab === 'carried' ? 'carry' : tab;
+      const isSelected = selected && selected.category === cat && selected.id === it.id && (selected.slotIdx === undefined || selected.slotIdx === idx);
+      setSelected(isSelected ? null : { category: cat, id: it.id, slotIdx: tab === 'carried' ? idx : undefined });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -88,21 +89,26 @@ const Dock = ({ openModal, selected, setSelected }) => {
                 );
               }
               const count = isCarriedTab ? (it._count || 0) : (inv[it.id] || 0);
-              const placeable = !isCarriedTab && tab !== 'items';
-              const sel = placeable && selected && selected.category === tab && selected.id === it.id;
+              const selectable = true;
+              const selCategory = isCarriedTab ? 'carry' : tab;
+              const sel = selectable && selected && selected.category === selCategory && selected.id === it.id
+                && (selected.slotIdx === undefined || selected.slotIdx === idx);
+              const maxDur = isCarriedTab ? (window.Store.CATALOG_MAP[it.id]?.maxDurability ?? null) : null;
+              const curUses = isCarriedTab ? (typeof it._uses === 'number' ? it._uses : null) : null;
+              const showDur = maxDur !== null && curUses !== null;
               return (
                 <div
-                  key={it.id}
+                  key={`slot-${idx}`}
                   className={'inv-cell ' + (sel ? 'selected' : '')}
-                  onClick={() => placeable && setSelected(sel ? null : { category: tab, id: it.id })}
+                  onClick={() => selectable && setSelected(sel ? null : { category: selCategory, id: it.id, slotIdx: isCarriedTab ? idx : undefined })}
                   data-tip={it.name}
-                  role={placeable ? 'button' : undefined}
-                  tabIndex={placeable ? 0 : undefined}
+                  role={selectable ? 'button' : undefined}
+                  tabIndex={selectable ? 0 : undefined}
                   onKeyDown={(e) => {
-                    if (!placeable) return;
+                    if (!selectable) return;
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      setSelected(sel ? null : { category: tab, id: it.id });
+                      setSelected(sel ? null : { category: selCategory, id: it.id, slotIdx: isCarriedTab ? idx : undefined });
                     }
                   }}
                 >
@@ -111,6 +117,17 @@ const Dock = ({ openModal, selected, setSelected }) => {
                   </div>
                   <span className="count">{count}</span>
                   <span className="label">{it.name}</span>
+                  {showDur && (
+                    <div style={{ position: 'absolute', bottom: 4, left: 5, right: 5, height: 3, background: 'rgba(0,0,0,0.5)', borderRadius: 2 }}>
+                      <div style={{
+                        height: '100%',
+                        width: `${Math.round((curUses / maxDur) * 100)}%`,
+                        background: curUses > maxDur * 0.3 ? '#c8a850' : '#c84040',
+                        borderRadius: 2,
+                        transition: 'width 0.3s',
+                      }} />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -171,9 +188,17 @@ const Dock = ({ openModal, selected, setSelected }) => {
 
 const PlacementHint = ({ selected }) => {
   const item = window.Store.CATALOG_MAP[selected.id];
+  const isUsable = !!item?.usable;
+  const isHeld = !isUsable && (selected.category === 'carry' || selected.category === 'items');
+  const verb = isUsable ? 'を使用中' : isHeld ? 'を持っています' : 'を配置中';
+  const hint = isUsable
+    ? 'プレイヤーの下のタイルに反応 / ESC 取消'
+    : isHeld
+    ? 'ESC で解除'
+    : 'グリッドクリック / ESC 取消';
   return (
     <div className="hint" style={{ bottom: 110 }}>
-      <strong style={{ color: 'var(--dust)' }}>{item.name}</strong> を配置中 — グリッドクリック / <kbd>ESC</kbd> 取消
+      <strong style={{ color: 'var(--dust)' }}>{item?.name}</strong> {verb} — {hint}
     </div>
   );
 };

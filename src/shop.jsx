@@ -35,7 +35,8 @@ const Shop = () => {
 
   const CATALOG = window.Store.CATALOG;
   const items = (CATALOG[tab] || []).filter(it =>
-    !search || it.name.includes(search) || it.kind.includes(search)
+    !it.shopHidden &&
+    (!search || it.name.includes(search) || it.kind.includes(search))
   );
 
   const buy = (it) => {
@@ -94,7 +95,7 @@ const Shop = () => {
                 </div>
                 <div>
                   <div style={shopStyles.cardName}>{it.name}</div>
-                  <div style={shopStyles.cardKind}>{it.kind}{it.mergeCap ? ` · 合体×${it.mergeCap}` : ''}{it.harvestMin ? ` · 採取 ${it.harvestMin}分` : ''}</div>
+                  <div style={shopStyles.cardKind}>{it.kind}{it.harvestMin ? ` · 採取 ${it.harvestMin}分` : ''}</div>
                 </div>
                 <div style={shopStyles.cardFoot}>
                   <span style={shopStyles.price}>{isForSale ? `${it.price} DUST` : '販売未対応'}</span>

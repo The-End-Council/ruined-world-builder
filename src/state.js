@@ -17,12 +17,20 @@
   const WEATHER_MODES = ['clear', 'cloudy', 'rain', 'storm', 'snow'];
   const SPECIAL_WEATHERS = ['night_starry', 'seabed', 'collapse', 'blood_moon'];
   const WORLD_CATEGORIES = ['tile', 'furniture', 'decoration', 'building', 'farming', 'ore', 'items'];
+  // Building upgrade chains: placing same building on same tile merges into the next level
+  const BUILDING_MERGES = {
+    'shack_scrap':     'shack_scrap_2',
+    'shack_scrap_2':   'shack_scrap_3',
+    'warehouse_rust':  'warehouse_rust_2',
+    'warehouse_rust_2':'warehouse_rust_3',
+  };
   const STARTER_TILES = [
     { x: 0, z: 0, type: 'soil_ash' },
     { x: 1, z: 0, type: 'soil_ash', item: 'desk_iron',  itemCategory: 'furniture', itemRotation: 0 },
     { x: 0, z: 1, type: 'soil_ash' },
     { x: 1, z: 1, type: 'soil_ash', item: 'chair_iron', itemCategory: 'furniture', itemRotation: 2 },
   ];
+  const DEFAULT_SPAWN = { x: 0, z: 0 };
   const STARTER_TILE_KEYS = new Set(STARTER_TILES.map(t => `${t.x},${t.z}`));
   function isStarterTileProtected(x, z) {
     return STARTER_TILE_KEYS.has(`${x},${z}`);
@@ -50,33 +58,30 @@
       { id: 'drum_oil',     name: 'ドラム缶',     kind: '装飾', price: 1 },
     ],
     building: [
-      { id: 'shack_scrap',  name: '廃材小屋',     kind: '住居', price: 10, mergeCap: 3 },
-      { id: 'warehouse_rust', name: '錆びた倉庫', kind: '倉庫', price: 15, mergeCap: 3 },
+      { id: 'shack_scrap',   name: '廃材小屋 Lv1', kind: '住居', price: 10 },
+      { id: 'shack_scrap_2', name: '廃材小屋 Lv2', kind: '住居', price: null, shopHidden: true },
+      { id: 'shack_scrap_3', name: '廃材小屋 Lv3', kind: '住居', price: null, shopHidden: true },
+      { id: 'warehouse_rust',   name: '錆びた倉庫 Lv1', kind: '倉庫', price: 15 },
+      { id: 'warehouse_rust_2', name: '錆びた倉庫 Lv2', kind: '倉庫', price: null, shopHidden: true },
+      { id: 'warehouse_rust_3', name: '錆びた倉庫 Lv3', kind: '倉庫', price: null, shopHidden: true },
     ],
     farming: [
-      { id: 'field_barren', name: '荒れた耕地',   kind: '土',   price: 2 },
-      { id: 'moss_gray',    name: '灰色の苔',     kind: '苔',   price: 2 },
-      { id: 'potato_waste', name: '廃土ポテト',   kind: '作物', price: 3, harvestMin: 15 },
+      { id: 'field_barren',    name: '荒れた耕地',          kind: '土',   price: 2,    shopHidden: true, noReturn: true },
+      { id: 'potato_field_0',  name: '廃土ポテト (0%)',      kind: '作物', price: null, shopHidden: true, noReturn: true },
+      { id: 'potato_field_50', name: '廃土ポテト (50%)',     kind: '作物', price: null, shopHidden: true, noReturn: true },
+      { id: 'potato_field_100',name: '廃土ポテト (収穫可)',  kind: '作物', price: null, shopHidden: true, noReturn: true },
+      { id: 'potato_seed',     name: '廃土ポテトの種',       kind: '種',   price: 3,    usable: true, harvestMin: 15 },
     ],
     ore: [
-      { id: 'iron_rust',    name: '錆鉄',         kind: '鉄',   price: 1, harvestMin: 30 },
+      { id: 'iron_rust',    name: '錆鉄',         kind: '鉄',   price: 1, harvestMin: 15 },
     ],
     items: [
-      { id: 'iron_scrap',   name: '鉄くず',       kind: '素材', price: null },
-      { id: 'stone_rubble', name: '石くず',       kind: '素材', price: null },
-      { id: 'wood_rotten',  name: '腐った木材',   kind: '素材', price: null },
-      { id: 'herb_dry',     name: '乾いた草',     kind: '植物', price: null },
-      { id: 'dust_shard',   name: '塵の欠片',     kind: '素材', price: null },
+      { id: 'potato_harvest',  name: '廃土ポテト',   kind: '食材', price: null, shopHidden: true },
+      { id: 'iron_rust_fragment', name: '錆鉄片',    kind: '素材', price: null, shopHidden: true },
     ],
     carry: [
-      { id: 'food_ration',   name: '非常食',           kind: '消耗品', price: 5  },
-      { id: 'medkit_worn',   name: '応急処置キット',   kind: '医療',   price: 20 },
-      { id: 'flashlight',    name: 'フラッシュライト', kind: '道具',   price: 30 },
-      { id: 'rope_old',      name: '古いロープ',       kind: '道具',   price: 10 },
-      { id: 'notebook_worn', name: 'ノート',           kind: '道具',   price: 5  },
-      { id: 'canteen',       name: 'カンテラ',         kind: '道具',   price: 8  },
-      { id: 'compass_old',   name: '古いコンパス',     kind: '道具',   price: 15 },
-      { id: 'smoke_flare',   name: '発煙筒',           kind: '消耗品', price: 12 },
+      { id: 'hoe_rust',      name: '錆びたクワ',       kind: '道具',   price: 10, usable: true, maxDurability: 10, noStack: true },
+      { id: 'pickaxe_rust',  name: '錆びたピッケル',   kind: '道具',   price: 10, usable: true, maxDurability: 10, noStack: true },
     ],
   };
 
@@ -95,7 +100,7 @@
         name: '白群',          // White-haired girl
         level: 1,
         xp: 0,
-        happiness: 72,        // 0-100
+        happiness: 0,         // 0-100
         position: { x: 0, z: 0 },
       },
       world: {
@@ -109,7 +114,9 @@
         weatherMode: 'clear',
         specialWeather: null,
         homeAnchor: { x: 0, z: 0 },
-        spawnTile: { x: 0, z: 0 },
+        spawnTile: { ...DEFAULT_SPAWN },
+        spawnBedKey: null,
+        shelfStorages: {},
       },
       inventory: {
         tile: { soil_barren: 2, soil_ash: 1 },
@@ -355,7 +362,23 @@
     if (next.world.specialWeather !== null && !SPECIAL_WEATHERS.includes(next.world.specialWeather)) {
       next.world.specialWeather = null;
     }
-    if (!next.world.spawnTile) next.world.spawnTile = { x: 0, z: 0 };
+    if (!next.world.spawnTile) next.world.spawnTile = { ...DEFAULT_SPAWN };
+    next.world.spawnTile = {
+      x: Number.isFinite(next.world.spawnTile.x) ? Math.round(next.world.spawnTile.x) : DEFAULT_SPAWN.x,
+      z: Number.isFinite(next.world.spawnTile.z) ? Math.round(next.world.spawnTile.z) : DEFAULT_SPAWN.z,
+    };
+    next.world.spawnBedKey = typeof next.world.spawnBedKey === 'string' ? next.world.spawnBedKey : null;
+    next.world.shelfStorages = ensureShelfStoragesShape(next.world.shelfStorages);
+    if (next.world.spawnBedKey) {
+      const bedPos = parseCellKey(next.world.spawnBedKey);
+      const bedExists = bedPos && next.world.tiles.some(t => t.x === bedPos.x && t.z === bedPos.z && t.item === 'bed_iron');
+      if (!bedExists) {
+        next.world.spawnBedKey = null;
+        next.world.spawnTile = { ...DEFAULT_SPAWN };
+      } else {
+        next.world.spawnTile = { x: bedPos.x, z: bedPos.z };
+      }
+    }
 
     next.inventory = ensureInventoryShape(next.inventory);
     migrateLegacyDecorationInventory(next.inventory);
@@ -506,6 +529,94 @@
     };
   }
 
+  const SHELF_CAPACITY = 12; // 3 x 4
+  function shelfKey(x, z) {
+    return `${x},${z}`;
+  }
+  function parseCellKey(key) {
+    if (typeof key !== 'string') return null;
+    const [sx, sz] = key.split(',');
+    const x = Number(sx);
+    const z = Number(sz);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+    return { x: Math.round(x), z: Math.round(z) };
+  }
+  function normalizeShelfSlot(slot) {
+    if (!slot || typeof slot !== 'object') return null;
+    const kind = slot.kind;
+    const id = slot.id;
+    const count = Math.max(1, Number(slot.count) || 0);
+    if (!id || !Number.isFinite(count)) return null;
+    const meta = CATALOG_MAP[id];
+    if (!meta) return null;
+    if (kind === 'material' && meta.category === 'items') return { kind, id, count };
+    if (kind === 'carry' && meta.category === 'carry') return { kind, id, count };
+    return null;
+  }
+  function ensureShelfSlots(arr) {
+    const slots = Array(SHELF_CAPACITY).fill(null);
+    if (!Array.isArray(arr)) return slots;
+    for (let i = 0; i < SHELF_CAPACITY; i++) {
+      slots[i] = normalizeShelfSlot(arr[i]);
+    }
+    return slots;
+  }
+  function ensureShelfStoragesShape(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const out = {};
+    Object.entries(src).forEach(([k, arr]) => {
+      out[k] = ensureShelfSlots(arr);
+    });
+    return out;
+  }
+  function cloneShelfStorages(raw) {
+    const src = ensureShelfStoragesShape(raw);
+    const out = {};
+    Object.entries(src).forEach(([k, arr]) => {
+      out[k] = arr.map(s => (s ? { ...s } : null));
+    });
+    return out;
+  }
+  function findShelfSlotForPut(slots, kind, id) {
+    for (let i = 0; i < slots.length; i++) {
+      const s = slots[i];
+      if (s && s.kind === kind && s.id === id) return i;
+    }
+    return slots.findIndex(s => !s);
+  }
+  function canPlaceIntoCarried(carried, id) {
+    for (const zone of ['bag', 'hotbar']) {
+      for (let i = 0; i < carried[zone].length; i++) {
+        if (carried[zone][i]?.id === id) return true;
+      }
+    }
+    for (const zone of ['bag', 'hotbar']) {
+      for (let i = 0; i < carried[zone].length; i++) {
+        if (!carried[zone][i]) return true;
+      }
+    }
+    return false;
+  }
+  function addCarryToCarried(carried, id, count) {
+    for (const zone of ['bag', 'hotbar']) {
+      for (let i = 0; i < carried[zone].length; i++) {
+        if (carried[zone][i]?.id === id) {
+          carried[zone][i] = { id, count: carried[zone][i].count + count };
+          return true;
+        }
+      }
+    }
+    for (const zone of ['bag', 'hotbar']) {
+      for (let i = 0; i < carried[zone].length; i++) {
+        if (!carried[zone][i]) {
+          carried[zone][i] = { id, count };
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   function buyCarryItem(id) {
     const it = CATALOG_MAP[id];
     if (!it || it.category !== 'carry') return false;
@@ -514,13 +625,15 @@
     set(s => {
       if (s.currency.dust < it.price) return s;
       const carried = cloneCarried(s.carried);
-      // Stack onto existing slot
-      for (const zone of ['bag', 'hotbar']) {
-        for (let i = 0; i < carried[zone].length; i++) {
-          if (carried[zone][i]?.id === id) {
-            carried[zone][i] = { id, count: carried[zone][i].count + 1 };
-            ok = true;
-            return { ...s, currency: { ...s.currency, dust: s.currency.dust - it.price }, carried };
+      // Stack onto existing slot (unless noStack)
+      if (!it.noStack) {
+        for (const zone of ['bag', 'hotbar']) {
+          for (let i = 0; i < carried[zone].length; i++) {
+            if (carried[zone][i]?.id === id) {
+              carried[zone][i] = { ...carried[zone][i], count: carried[zone][i].count + 1 };
+              ok = true;
+              return { ...s, currency: { ...s.currency, dust: s.currency.dust - it.price }, carried };
+            }
           }
         }
       }
@@ -528,7 +641,9 @@
       for (const zone of ['bag', 'hotbar']) {
         for (let i = 0; i < carried[zone].length; i++) {
           if (!carried[zone][i]) {
-            carried[zone][i] = { id, count: 1 };
+            const slot = { id, count: 1 };
+            if (it.maxDurability !== undefined) slot.uses = it.maxDurability;
+            carried[zone][i] = slot;
             ok = true;
             return { ...s, currency: { ...s.currency, dust: s.currency.dust - it.price }, carried };
           }
@@ -560,6 +675,144 @@
     });
   }
 
+  function getShelfSlots(x, z) {
+    const s = get();
+    const storages = ensureShelfStoragesShape(s.world?.shelfStorages);
+    return ensureShelfSlots(storages[shelfKey(x, z)]).map(slot => (slot ? { ...slot } : null));
+  }
+
+  function depositMaterialToShelf(x, z, id, amount = 1) {
+    const count = Math.max(1, Math.floor(Number(amount) || 0));
+    let result = { ok: false, reason: 'invalid' };
+    set(s => {
+      const tile = s.world.tiles.find(t => t.x === x && t.z === z);
+      if (!tile || tile.item !== 'shelf_rust') {
+        result = { ok: false, reason: 'not_shelf' };
+        return s;
+      }
+      const itemMeta = CATALOG_MAP[id];
+      if (!itemMeta || itemMeta.category !== 'items') {
+        result = { ok: false, reason: 'not_material' };
+        return s;
+      }
+      const inv = ensureInventoryShape(s.inventory);
+      if ((inv.items[id] || 0) < count) {
+        result = { ok: false, reason: 'not_enough' };
+        return s;
+      }
+
+      const storages = cloneShelfStorages(s.world.shelfStorages);
+      const key = shelfKey(x, z);
+      const slots = ensureShelfSlots(storages[key]);
+      const si = findShelfSlotForPut(slots, 'material', id);
+      if (si < 0) {
+        result = { ok: false, reason: 'shelf_full' };
+        return s;
+      }
+
+      if (slots[si]) slots[si] = { ...slots[si], count: slots[si].count + count };
+      else slots[si] = { kind: 'material', id, count };
+      takeInventoryCount(inv, 'items', id, count);
+      storages[key] = slots;
+      result = { ok: true, stored: count };
+      return { ...s, inventory: inv, world: { ...s.world, shelfStorages: storages } };
+    });
+    return result;
+  }
+
+  function depositCarryToShelf(x, z, zone, index) {
+    let result = { ok: false, reason: 'invalid' };
+    set(s => {
+      const tile = s.world.tiles.find(t => t.x === x && t.z === z);
+      if (!tile || tile.item !== 'shelf_rust') {
+        result = { ok: false, reason: 'not_shelf' };
+        return s;
+      }
+      const carried = cloneCarried(s.carried);
+      if (!carried[zone] || index < 0 || index >= carried[zone].length) {
+        result = { ok: false, reason: 'bad_slot' };
+        return s;
+      }
+      const source = carried[zone][index];
+      if (!source) {
+        result = { ok: false, reason: 'empty' };
+        return s;
+      }
+      const itemMeta = CATALOG_MAP[source.id];
+      if (!itemMeta || itemMeta.category !== 'carry') {
+        result = { ok: false, reason: 'not_carry' };
+        return s;
+      }
+
+      const storages = cloneShelfStorages(s.world.shelfStorages);
+      const key = shelfKey(x, z);
+      const slots = ensureShelfSlots(storages[key]);
+      const si = findShelfSlotForPut(slots, 'carry', source.id);
+      if (si < 0) {
+        result = { ok: false, reason: 'shelf_full' };
+        return s;
+      }
+
+      if (slots[si]) slots[si] = { ...slots[si], count: slots[si].count + source.count };
+      else slots[si] = { kind: 'carry', id: source.id, count: source.count };
+      carried[zone][index] = null;
+      storages[key] = slots;
+      result = { ok: true, stored: source.count };
+      return { ...s, carried, world: { ...s.world, shelfStorages: storages } };
+    });
+    return result;
+  }
+
+  function withdrawShelfSlot(x, z, slotIndex) {
+    let result = { ok: false, reason: 'invalid' };
+    set(s => {
+      const tile = s.world.tiles.find(t => t.x === x && t.z === z);
+      if (!tile || tile.item !== 'shelf_rust') {
+        result = { ok: false, reason: 'not_shelf' };
+        return s;
+      }
+      if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= SHELF_CAPACITY) {
+        result = { ok: false, reason: 'bad_slot' };
+        return s;
+      }
+
+      const storages = cloneShelfStorages(s.world.shelfStorages);
+      const key = shelfKey(x, z);
+      const slots = ensureShelfSlots(storages[key]);
+      const slot = slots[slotIndex];
+      if (!slot) {
+        result = { ok: false, reason: 'empty' };
+        return s;
+      }
+
+      if (slot.kind === 'material') {
+        const inv = ensureInventoryShape(s.inventory);
+        addInventoryCount(inv, 'items', slot.id, slot.count);
+        slots[slotIndex] = null;
+        storages[key] = slots;
+        result = { ok: true, kind: 'material', count: slot.count };
+        return { ...s, inventory: inv, world: { ...s.world, shelfStorages: storages } };
+      }
+
+      if (slot.kind === 'carry') {
+        const carried = cloneCarried(s.carried);
+        if (!canPlaceIntoCarried(carried, slot.id)) {
+          result = { ok: false, reason: 'carry_full' };
+          return s;
+        }
+        addCarryToCarried(carried, slot.id, slot.count);
+        slots[slotIndex] = null;
+        storages[key] = slots;
+        result = { ok: true, kind: 'carry', count: slot.count };
+        return { ...s, carried, world: { ...s.world, shelfStorages: storages } };
+      }
+
+      result = { ok: false, reason: 'invalid_slot' };
+      return s;
+    });
+    return result;
+  }
+
   function migrateLegacyDecorationInventory(inv) {
     if (!inv || !inv.furniture) return;
     if (!inv.decoration) inv.decoration = {};
@@ -588,7 +841,7 @@
     (tiles || []).forEach(t => {
       if (includeTiles) addInventoryCount(inv, 'tile', t.type, 1);
       const itemCategory = t.item ? (CATALOG_MAP[t.item]?.category || t.itemCategory) : null;
-      if (t.item && itemCategory) addInventoryCount(inv, itemCategory, t.item, 1);
+      if (t.item && itemCategory && !CATALOG_MAP[t.item]?.noReturn) addInventoryCount(inv, itemCategory, t.item, 1);
     });
   }
 
@@ -644,8 +897,24 @@
       } else {
         // need a tile underneath
         if (idx < 0) return s;
+
+        // Building merge: place same building on occupied tile → upgrade
+        if (category === 'building' && tiles[idx].item === id && BUILDING_MERGES[id]) {
+          const mergedId = BUILDING_MERGES[id];
+          const inv = ensureInventoryShape(s.inventory);
+          const curr = inv.building?.[id] || 0;
+          if (curr <= 0) return s;
+          const newInv = { ...inv, building: { ...inv.building, [id]: curr - 1 } };
+          const newTiles = [...tiles];
+          newTiles[idx] = { ...newTiles[idx], item: mergedId, itemCategory: 'building' };
+          return { ...s, world: { ...s.world, tiles: newTiles }, inventory: newInv };
+        }
+
         if (tiles[idx].item) return s;
-        tiles[idx] = { ...tiles[idx], item: id, itemCategory: category, itemRotation: rotation };
+        const nextTile = { ...tiles[idx], item: id, itemCategory: category, itemRotation: rotation };
+        if (category === 'ore') nextTile.orePlacedAt = Date.now();
+        else if (nextTile.orePlacedAt !== undefined) delete nextTile.orePlacedAt;
+        tiles[idx] = nextTile;
         placed = true;
       }
       if (!placed) return s;
@@ -723,6 +992,34 @@
     set(s => ({ ...s, world: { ...s.world, specialWeather: next } }));
   }
 
+  function setSpawnToBed(x, z) {
+    let result = { ok: false, reason: 'invalid' };
+    set(s => {
+      const bx = Math.round(Number(x));
+      const bz = Math.round(Number(z));
+      if (!Number.isFinite(bx) || !Number.isFinite(bz)) {
+        result = { ok: false, reason: 'invalid_coord' };
+        return s;
+      }
+      const bed = s.world.tiles.find(t => t.x === bx && t.z === bz && t.item === 'bed_iron');
+      if (!bed) {
+        result = { ok: false, reason: 'not_bed' };
+        return s;
+      }
+      const key = shelfKey(bx, bz);
+      result = { ok: true, x: bx, z: bz };
+      return {
+        ...s,
+        world: {
+          ...s.world,
+          spawnTile: { x: bx, z: bz },
+          spawnBedKey: key,
+        },
+      };
+    });
+    return result;
+  }
+
   function resetWorldToStarter() {
     set(s => {
       const inv = ensureInventoryShape(s.inventory);
@@ -736,7 +1033,9 @@
           ...s.world,
           tiles: starterTiles,
           homeAnchor: { x: 0, z: 0 },
-          spawnTile: { x: 0, z: 0 },
+          spawnTile: { ...DEFAULT_SPAWN },
+          spawnBedKey: null,
+          shelfStorages: {},
         },
         character: {
           ...s.character,
@@ -752,10 +1051,20 @@
       const inv = ensureInventoryShape(s.inventory);
       returnWorldToInventory(inv, s.world.tiles, false);
       const tiles = s.world.tiles.map(t => {
-        const { item, itemCategory, itemRotation, ...rest } = t;
+        const { item, itemCategory, itemRotation, cropPlantedAt, orePlacedAt, ...rest } = t;
         return { ...rest };
       });
-      return { ...s, world: { ...s.world, tiles }, inventory: inv };
+      return {
+        ...s,
+        world: {
+          ...s.world,
+          tiles,
+          shelfStorages: {},
+          spawnTile: { ...DEFAULT_SPAWN },
+          spawnBedKey: null,
+        },
+        inventory: inv,
+      };
     });
   }
 
@@ -770,10 +1079,18 @@
       const inv = ensureInventoryShape(s.inventory);
 
       if (tile.item) {
+        if (tile.item === 'shelf_rust') {
+          const storagesCheck = ensureShelfStoragesShape(s.world.shelfStorages);
+          const shelfSlots = ensureShelfSlots(storagesCheck[shelfKey(tile.x, tile.z)]);
+          if (shelfSlots.some(Boolean)) {
+            result = { ok: false, reason: 'shelf_not_empty' };
+            return s;
+          }
+        }
         const itemId = tile.item;
         const itemCategory = CATALOG_MAP[itemId]?.category || tile.itemCategory || null;
-        if (itemCategory) addInventoryCount(inv, itemCategory, itemId, 1);
-        const { item, itemCategory: _, itemRotation, ...rest } = tile;
+        if (itemCategory && !CATALOG_MAP[itemId]?.noReturn) addInventoryCount(inv, itemCategory, itemId, 1);
+        const { item, itemCategory: _, itemRotation, cropPlantedAt, orePlacedAt, ...rest } = tile;
         tiles[idx] = { ...rest };
         result = {
           ok: true,
@@ -782,7 +1099,19 @@
           category: itemCategory,
           name: CATALOG_MAP[itemId]?.name || itemId,
         };
-        return { ...s, world: { ...s.world, tiles }, inventory: inv };
+        let nextWorld = { ...s.world, tiles };
+        if (itemId === 'shelf_rust') {
+          const storages = cloneShelfStorages(s.world.shelfStorages);
+          delete storages[shelfKey(tile.x, tile.z)];
+          nextWorld = { ...nextWorld, shelfStorages: storages };
+        }
+        if (itemId === 'bed_iron') {
+          const key = shelfKey(tile.x, tile.z);
+          if (s.world.spawnBedKey === key) {
+            nextWorld = { ...nextWorld, spawnTile: { ...DEFAULT_SPAWN }, spawnBedKey: null };
+          }
+        }
+        return { ...s, world: nextWorld, inventory: inv };
       }
 
       if (isStarterTileProtected(tile.x, tile.z)) {
@@ -816,9 +1145,17 @@
         category: 'tile',
         name: CATALOG_MAP[tileId]?.name || tileId,
       };
+      const removedKey = shelfKey(tile.x, tile.z);
+      const nextSpawnBedKey = s.world.spawnBedKey === removedKey ? null : s.world.spawnBedKey;
+      const nextSpawnTile = (s.world.spawnBedKey === removedKey) ? { ...DEFAULT_SPAWN } : nextSpawn;
       return {
         ...s,
-        world: { ...s.world, tiles, spawnTile: nextSpawn },
+        world: {
+          ...s.world,
+          tiles,
+          spawnTile: nextSpawnTile,
+          spawnBedKey: nextSpawnBedKey,
+        },
         character: { ...s.character, position: nextCharPos },
         inventory: inv,
       };
@@ -993,11 +1330,227 @@
     _charPosSaveTimer = setTimeout(() => { save(state); }, 2000);
   }
 
+  // ---------- Farming ----------
+  function useHoeAt(x, z, hotbarIdx) {
+    let ok = false;
+    set(s => {
+      const tile = s.world.tiles.find(t => t.x === x && t.z === z);
+      if (!tile || tile.type !== 'soil_barren' || tile.item) return s;
+      const carried = cloneCarried(s.carried);
+      let found = false;
+      if (hotbarIdx !== undefined) {
+        const sl = carried.hotbar[hotbarIdx];
+        if (sl?.id === 'hoe_rust') {
+          const rem = sl.uses !== undefined ? sl.uses : sl.count;
+          if (rem > 0) {
+            const newUses = rem - 1;
+            carried.hotbar[hotbarIdx] = newUses > 0 ? { id: 'hoe_rust', count: 1, uses: newUses } : null;
+            found = true;
+          }
+        }
+      }
+      if (!found) {
+        for (const zone of ['hotbar', 'bag']) {
+          for (let i = 0; i < carried[zone].length; i++) {
+            const sl = carried[zone][i];
+            if (sl?.id !== 'hoe_rust') continue;
+            const rem = sl.uses !== undefined ? sl.uses : sl.count;
+            if (rem <= 0) continue;
+            const newUses = rem - 1;
+            carried[zone][i] = newUses > 0 ? { id: 'hoe_rust', count: 1, uses: newUses } : null;
+            found = true;
+            break;
+          }
+          if (found) break;
+        }
+      }
+      if (!found) return s;
+      const tiles = s.world.tiles.map(t =>
+        t.x === x && t.z === z ? { ...t, item: 'field_barren', itemCategory: 'farming', itemRotation: 0 } : t
+      );
+      ok = true;
+      return { ...s, world: { ...s.world, tiles }, carried };
+    });
+    return ok;
+  }
+
+  function usePickaxeAt(x, z, hotbarIdx) {
+    let result = { ok: false, reason: 'invalid' };
+    set(s => {
+      const tile = s.world.tiles.find(t => t.x === x && t.z === z);
+      if (!tile || tile.item !== 'iron_rust') {
+        result = { ok: false, reason: 'not_ore' };
+        return s;
+      }
+
+      const requiredMs = Math.max(0, Math.round((CATALOG_MAP.iron_rust?.harvestMin || 0) * 60000));
+      const placedAt = Number(tile.orePlacedAt || 0);
+      const elapsed = placedAt ? (Date.now() - placedAt) : requiredMs;
+      if (requiredMs > 0 && elapsed < requiredMs) {
+        result = { ok: false, reason: 'not_ready', remainingMs: requiredMs - elapsed };
+        return s;
+      }
+
+      const carried = cloneCarried(s.carried);
+      let found = false;
+      let remainingUses = 0;
+      const consumeAt = (zone, idx) => {
+        const sl = carried[zone][idx];
+        if (!sl || sl.id !== 'pickaxe_rust') return false;
+        const rem = sl.uses !== undefined ? sl.uses : sl.count;
+        if (rem <= 0) return false;
+        const nextUses = rem - 1;
+        remainingUses = nextUses;
+        carried[zone][idx] = nextUses > 0 ? { id: 'pickaxe_rust', count: 1, uses: nextUses } : null;
+        return true;
+      };
+
+      if (hotbarIdx !== undefined) {
+        found = consumeAt('hotbar', hotbarIdx);
+      }
+      if (!found) {
+        outer: for (const zone of ['hotbar', 'bag']) {
+          for (let i = 0; i < carried[zone].length; i++) {
+            if (consumeAt(zone, i)) { found = true; break outer; }
+          }
+        }
+      }
+      if (!found) {
+        result = { ok: false, reason: 'no_pickaxe' };
+        return s;
+      }
+
+      const inv = ensureInventoryShape(s.inventory);
+      addInventoryCount(inv, 'items', 'iron_rust_fragment', 1);
+      const tiles = s.world.tiles.map(t => {
+        if (t.x !== x || t.z !== z) return t;
+        const { item, itemCategory, itemRotation, orePlacedAt, ...rest } = t;
+        return { ...rest };
+      });
+
+      result = { ok: true, gained: 'iron_rust_fragment', remainingUses };
+      return { ...s, world: { ...s.world, tiles }, inventory: inv, carried };
+    });
+    return result;
+  }
+
+  function plantSeedAt(x, z) {
+    let ok = false;
+    set(s => {
+      const tile = s.world.tiles.find(t => t.x === x && t.z === z);
+      if (!tile || tile.item !== 'field_barren') return s;
+      const inv = ensureInventoryShape(s.inventory);
+      if ((inv.farming?.potato_seed || 0) <= 0) return s;
+      const tiles = s.world.tiles.map(t =>
+        t.x === x && t.z === z
+          ? { ...t, item: 'potato_field_0', itemCategory: 'farming', itemRotation: 0, cropPlantedAt: Date.now() }
+          : t
+      );
+      takeInventoryCount(inv, 'farming', 'potato_seed', 1);
+      ok = true;
+      return { ...s, world: { ...s.world, tiles }, inventory: inv };
+    });
+    return ok;
+  }
+
+  function advanceCrop(x, z) {
+    set(s => {
+      const tile = s.world.tiles.find(t => t.x === x && t.z === z);
+      if (!tile) return s;
+      const next = tile.item === 'potato_field_0'  ? 'potato_field_50'
+                 : tile.item === 'potato_field_50' ? 'potato_field_100'
+                 : null;
+      if (!next) return s;
+      const tiles = s.world.tiles.map(t =>
+        t.x === x && t.z === z ? { ...t, item: next } : t
+      );
+      return { ...s, world: { ...s.world, tiles } };
+    });
+  }
+
+  function harvestCrop(x, z) {
+    let ok = false;
+    set(s => {
+      const tile = s.world.tiles.find(t => t.x === x && t.z === z);
+      if (!tile || tile.item !== 'potato_field_100') return s;
+      const inv = ensureInventoryShape(s.inventory);
+      addInventoryCount(inv, 'items', 'potato_harvest', 1);
+      const tiles = s.world.tiles.map(t =>
+        t.x === x && t.z === z
+          ? { ...t, item: 'field_barren', itemCategory: 'farming', cropPlantedAt: undefined }
+          : t
+      );
+      ok = true;
+      return { ...s, world: { ...s.world, tiles }, inventory: inv };
+    });
+    return ok;
+  }
+
+  function giveItem(id, amount) {
+    const it = CATALOG_MAP[id];
+    if (!it) return false;
+    const amt = Math.max(1, amount || 1);
+    set(s => {
+      if (it.category === 'carry') {
+        const carried = cloneCarried(s.carried);
+        if (it.noStack) {
+          for (let a = 0; a < amt; a++) {
+            for (const zone of ['hotbar', 'bag']) {
+              const emptyIdx = carried[zone].findIndex(sl => !sl);
+              if (emptyIdx !== -1) {
+                const slot = { id, count: 1 };
+                if (it.maxDurability !== undefined) slot.uses = it.maxDurability;
+                carried[zone][emptyIdx] = slot;
+                break;
+              }
+            }
+          }
+        } else {
+          addCarryToCarried(carried, id, amt);
+        }
+        return { ...s, carried };
+      }
+      const inv = ensureInventoryShape(s.inventory);
+      addInventoryCount(inv, it.category, id, amt);
+      return { ...s, inventory: inv };
+    });
+    return true;
+  }
+
+  function discardItem(category, id, slotIdx, all) {
+    set(s => {
+      if (category === 'carry') {
+        const carried = cloneCarried(s.carried);
+        let zone, idx;
+        if (slotIdx !== undefined) {
+          zone = 'hotbar'; idx = slotIdx;
+        } else {
+          outer: for (const z of ['hotbar', 'bag']) {
+            for (let i = 0; i < carried[z].length; i++) {
+              if (carried[z][i]?.id === id) { zone = z; idx = i; break outer; }
+            }
+          }
+        }
+        if (zone === undefined) return s;
+        const sl = carried[zone][idx];
+        if (!sl) return s;
+        carried[zone][idx] = (!all && sl.count > 1) ? { ...sl, count: sl.count - 1 } : null;
+        return { ...s, carried };
+      }
+      const inv = { ...s.inventory };
+      inv[category] = { ...(inv[category] || {}) };
+      const curr = inv[category][id] || 0;
+      if (curr <= 0) return s;
+      inv[category][id] = all ? 0 : curr - 1;
+      return { ...s, inventory: inv };
+    });
+  }
+
   // ---------- Export ----------
   window.Store = {
     get, set, subscribe, reset,
     CATALOG, CATALOG_MAP,
-    addDust, spendDust, buyItem, placeAt, removeAt, setWeather, setTimeOfDay, setHour, setSeason, setWeatherMode, setSpecialWeather,
+    addDust, spendDust, buyItem, placeAt, removeAt, setWeather, setTimeOfDay, setHour, setSeason, setWeatherMode, setSpecialWeather, setSpawnToBed,
     resetWorldToStarter, clearToGrass,
     isStarterTileProtected,
     listWorldSaves, saveWorldSave, loadWorldSave, deleteWorldSave, getActiveSaveId,
@@ -1009,5 +1562,8 @@
     claimDaily, claimMission,
     moveCharacter, setCharacterPos,
     buyCarryItem, moveCarriedSlot, removeCarriedSlot,
+    getShelfSlots, depositMaterialToShelf, depositCarryToShelf, withdrawShelfSlot,
+    useHoeAt, usePickaxeAt, plantSeedAt, advanceCrop, harvestCrop,
+    giveItem, discardItem,
   };
 })();
