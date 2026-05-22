@@ -1,6 +1,6 @@
 /* ============================================================
    ExtendedInventory — Minecraft-style bag (3×10) + hotbar (1×10)
-   Toggle: E key (when not near chair) / Escape to close
+   Toggle: E key (when not near chair/shelf) / Escape to close
    ============================================================ */
 
 const ExtendedInventory = () => {

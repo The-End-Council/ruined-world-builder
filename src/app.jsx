@@ -65,6 +65,32 @@ const App = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showcaseMode]);
 
+  // Q / Shift+Q — discard selected item
+  React.useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key.toLowerCase() !== 'q') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable)) return;
+      if (!selectedItem) return;
+      e.preventDefault();
+      const { category, id, slotIdx } = selectedItem;
+      const all = e.shiftKey;
+      window.Store.discardItem(category, id, slotIdx, all);
+      // Clear selection if nothing left
+      const s = window.Store.get();
+      let remaining;
+      if (category === 'carry') {
+        const zone = slotIdx !== undefined ? s.carried?.hotbar?.[slotIdx] : null;
+        remaining = zone ? zone.count : 0;
+      } else {
+        remaining = s.inventory?.[category]?.[id] || 0;
+      }
+      if (remaining <= 0) setSelectedItem(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedItem]);
+
   React.useLayoutEffect(() => {
     window.gameConfirm = (options = {}) => new Promise((resolve) => {
       setConfirmState((prev) => {
@@ -112,7 +138,9 @@ const App = () => {
       {showcaseMode && <ShowcaseExit onExit={exitShowcaseMode} />}
       <window.ToastStack />
       <InteractionPrompt />
+      <CropTimerOverlay />
       <window.ExtendedInventory />
+      <window.ShelfStorage />
 
       {/* Mini hint at first launch */}
       {!showcaseMode && <KeyHint />}
@@ -481,10 +509,22 @@ const ChatLog = () => {
     const parts = raw.trim().split(/\s+/);
     const c = parts[0];
     if (c === '/get') {
-      const res = parts[1];
-      const n = parseInt(parts[2], 10);
-      if (res === 'DUST' && n > 0) { window.Store.addDust(n); return `+${n} DUST`; }
-      return 'usage: /get DUST <amount>';
+      // /get DUST <number>
+      if (parts[1] === 'DUST') {
+        const n = parseInt(parts[2], 10);
+        if (n > 0) { window.Store.addDust(n); return `+${n} DUST`; }
+        return 'usage: /get DUST <amount>';
+      }
+      // /get <item name> [amount]
+      const lastPart = parts[parts.length - 1];
+      const trailingNum = /^\d+$/.test(lastPart) ? parseInt(lastPart, 10) : null;
+      const nameQuery = trailingNum !== null ? parts.slice(1, -1).join(' ') : parts.slice(1).join(' ');
+      const amount = trailingNum || 1;
+      if (!nameQuery) return 'usage: /get <アイテム名> [個数]';
+      const matches = Object.values(window.Store.CATALOG_MAP).filter(it => it.name === nameQuery);
+      if (matches.length === 0) return `「${nameQuery}」が見つかりません`;
+      matches.forEach(it => window.Store.giveItem(it.id, amount));
+      return matches.map(it => `+${amount} ${it.name} [${it.kind || it.category}]`).join(' / ');
     }
     return `unknown: ${c}`;
   }
@@ -553,7 +593,7 @@ const ChatLog = () => {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Escape') { setOpen(false); e.preventDefault(); } }}
-          placeholder="メッセージ or /get DUST 100"
+          placeholder="メッセージ or /コマンド"
           style={{
             flex: 1, background: 'transparent', border: 'none',
             borderBottom: '1px solid #2a2018', color: '#c8b896',
@@ -606,6 +646,38 @@ const InteractionPrompt = () => {
         letterSpacing: '0.05em',
       }}>{prompt.key}</span>
       <span style={{ color: 'var(--ink-soft)' }}>{prompt.label}</span>
+    </div>
+  );
+};
+
+const CropTimerOverlay = () => {
+  const [timers, setTimers] = React.useState([]);
+  React.useEffect(() => {
+    window.setCropTimers = (list) => setTimers(list || []);
+    return () => { delete window.setCropTimers; };
+  }, []);
+  if (timers.length === 0) return null;
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 5 }}>
+      {timers.map((t, i) => (
+        <div key={i} style={{
+          position: 'absolute',
+          left: t.x,
+          top: t.y,
+          transform: 'translate(-50%, -100%)',
+          background: t.ready ? 'rgba(10,28,10,0.88)' : 'rgba(14,10,8,0.78)',
+          color: t.ready ? '#6edb6e' : '#c8b050',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          padding: '2px 7px',
+          borderRadius: 3,
+          whiteSpace: 'nowrap',
+          border: t.ready ? '1px solid rgba(80,180,80,0.50)' : '1px solid rgba(160,130,60,0.40)',
+          letterSpacing: '0.06em',
+        }}>
+          {t.label}
+        </div>
+      ))}
     </div>
   );
 };

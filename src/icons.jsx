@@ -305,10 +305,42 @@ const ItemGlyph = ({ id, size = 36 }) => {
     /* Farming — original 2D */
     case 'field_barren':
       return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#3a2e1e" stroke="#1c1410"/><path d="M4 20h40M4 26h40M4 32h40" stroke="#2a2014"/></svg>;
-    case 'moss_gray':
-      return <svg {...common}><rect x="4" y="14" width="40" height="22" rx="2" fill="#4a5240" stroke="#2a3220"/><circle cx="14" cy="24" r="3" fill="#5a6450"/><circle cx="26" cy="28" r="4" fill="#5a6450"/><circle cx="36" cy="22" r="2.5" fill="#5a6450"/></svg>;
-    case 'potato_waste':
-      return <svg {...common}><rect x="4" y="30" width="40" height="6" fill="#3a2e1e" stroke="#1c1410"/><path d="M14 30v-10M24 30v-12M34 30v-9" stroke="#5a6a3a" strokeWidth="2"/><circle cx="14" cy="18" r="3" fill="#5a6a3a"/><circle cx="24" cy="16" r="3.5" fill="#5a6a3a"/><circle cx="34" cy="19" r="3" fill="#5a6a3a"/></svg>;
+    case 'potato_field_0':
+      return <svg {...common}><rect x="4" y="26" width="40" height="12" rx="2" fill="#2c1e0e" stroke="#1c1008"/><path d="M4 32h40M4 37h40" stroke="#1e1408" strokeWidth="0.8"/><ellipse cx="16" cy="27" rx="4" ry="2.5" fill="#3a2412"/><ellipse cx="28" cy="27" rx="4" ry="2.5" fill="#3a2412"/><ellipse cx="40" cy="27" rx="4" ry="2.5" fill="#3a2412"/><rect x="14" y="25" width="4" height="1.5" rx="0.5" fill="#1a1008"/><rect x="26" y="25" width="4" height="1.5" rx="0.5" fill="#1a1008"/><rect x="38" y="25" width="4" height="1.5" rx="0.5" fill="#1a1008"/></svg>;
+    case 'potato_field_50':
+      return <svg {...common}><rect x="4" y="30" width="40" height="8" rx="2" fill="#2c1e0e" stroke="#1c1008"/><path d="M15 30v-8M26 30v-10M37 30v-7" stroke="#4a5a28" strokeWidth="2.5" strokeLinecap="round"/><ellipse cx="13" cy="20" rx="4" ry="2.5" fill="#5a6a30" transform="rotate(-20,13,20)"/><ellipse cx="17" cy="21" rx="4" ry="2.5" fill="#5a6a30" transform="rotate(15,17,21)"/><ellipse cx="24" cy="18" rx="4.5" ry="2.5" fill="#5a6a30" transform="rotate(-25,24,18)"/><ellipse cx="28" cy="17" rx="4" ry="2.5" fill="#5a6a30" transform="rotate(20,28,17)"/><ellipse cx="35" cy="21" rx="4" ry="2.5" fill="#5a6a30" transform="rotate(-15,35,21)"/><ellipse cx="39" cy="22" rx="4" ry="2.5" fill="#5a6a30" transform="rotate(18,39,22)"/></svg>;
+    case 'potato_field_100':
+      return <svg {...common}><rect x="4" y="34" width="40" height="4" rx="2" fill="#2c1e0e" stroke="#1c1008"/><path d="M15 34v-18M26 34v-20M37 34v-17" stroke="#3a4820" strokeWidth="2.5" strokeLinecap="round"/><ellipse cx="11" cy="14" rx="5" ry="3" fill="#4a6028" transform="rotate(-25,11,14)"/><ellipse cx="19" cy="13" rx="5" ry="3" fill="#4a6028" transform="rotate(20,19,13)"/><ellipse cx="22" cy="11" rx="5.5" ry="3" fill="#4a6028" transform="rotate(-30,22,11)"/><ellipse cx="30" cy="10" rx="5" ry="3" fill="#4a6028" transform="rotate(25,30,10)"/><ellipse cx="33" cy="13" rx="5" ry="3" fill="#4a6028" transform="rotate(-18,33,13)"/><ellipse cx="41" cy="15" rx="4.5" ry="2.5" fill="#4a6028" transform="rotate(22,41,15)"/><ellipse cx="18" cy="33" rx="4" ry="2.5" fill="#8a6a3a"/><ellipse cx="30" cy="33" rx="4" ry="2.5" fill="#8a6a3a"/></svg>;
+    case 'hoe_rust':
+      return <svg {...common}><rect x="22" y="10" width="4" height="28" rx="2" fill="#5a4228" stroke="#2a1e10"/><rect x="10" y="18" width="16" height="5" rx="1" fill="#6a5038" stroke="#2a1e10"/><path d="M12 18l-4 8 4 0" stroke="#5a4028" strokeWidth="1.5" fill="none"/><rect x="8" y="22" width="6" height="8" rx="1" fill="#5a3e24" stroke="#3a2214"/><path d="M8 24h6M8 27h6" stroke="#3a2810" strokeWidth="0.8"/></svg>;
+    case 'pickaxe_rust':
+      return <svg {...common}>
+        {/* wooden handle */}
+        <rect x="22.1" y="8.6" width="3.8" height="30.8" rx="1.6" fill="#7a5b3e" stroke="#3a2a1a"/>
+        <rect x="22.8" y="11.2" width="2.4" height="25.4" rx="1.0" fill="#8b6a49" fillOpacity="0.45"/>
+        {/* wrapped cloth */}
+        <rect x="20.6" y="24.8" width="6.8" height="2.4" rx="0.8" fill="#b9a88d"/>
+        <rect x="20.8" y="27.6" width="6.4" height="2.2" rx="0.8" fill="#a79880"/>
+        {/* repaired metal collar */}
+        <rect x="20.6" y="14.6" width="6.8" height="2.4" rx="0.8" fill="#5a534d" stroke="#2d2925"/>
+        {/* rusted pickaxe head */}
+        <path d="M10.2 16.0h27.6l-3.2 3.6H13.4z" fill="#8a5138" stroke="#3b2418"/>
+        <path d="M9.8 16.0l-3.0 3.2 6.0 0.2 2.2-3.4z" fill="#6e4330" stroke="#3b2418"/>
+        <path d="M38.2 16.0l3.0 3.0-6.2 0.4-2.0-3.4z" fill="#73503a" stroke="#3b2418"/>
+        {/* chipped tip / scratches */}
+        <rect x="34.8" y="18.0" width="1.8" height="0.9" rx="0.4" fill="#2f2b28"/>
+        <path d="M13.4 17.6l2.0 0M28.0 18.4l1.8 0" stroke="#b27759" strokeWidth="0.7" strokeLinecap="round"/>
+      </svg>;
+    case 'potato_seed':
+      return <svg {...common}><ellipse cx="24" cy="28" rx="9" ry="6" fill="#5a4a28" stroke="#2a2010"/><ellipse cx="18" cy="26" rx="6" ry="4" fill="#4a3c20" stroke="#2a2010"/><path d="M24 22c0 0 1-6 5-8" stroke="#4a6028" strokeWidth="1.5" fill="none" strokeLinecap="round"/><path d="M20 23c0 0-1-5-4-6" stroke="#4a6028" strokeWidth="1.5" fill="none" strokeLinecap="round"/><path d="M24 22c1-2 4-4 3-7" stroke="#4a6028" strokeWidth="1.2" fill="none" strokeLinecap="round"/></svg>;
+    case 'potato_harvest':
+      return <svg {...common}><ellipse cx="24" cy="26" rx="11" ry="8" fill="#8a6a3a" stroke="#4a3818"/><ellipse cx="16" cy="28" rx="7" ry="5.5" fill="#7a5e30" stroke="#3a2c14"/><ellipse cx="32" cy="24" rx="7" ry="5" fill="#9a7844" stroke="#4a3818"/><path d="M24 18c0 0 2-5 5-5 1 0 2 1 1 2" stroke="#4a6028" strokeWidth="1.5" fill="none"/><path d="M18 20c0 0-1-4-4-4" stroke="#4a6028" strokeWidth="1.5" fill="none"/></svg>;
+    case 'iron_rust_fragment':
+      return <svg {...common}>
+        <path d="M9.6 27.8l8.0-10.2 10.8-2.4 10.4 5.6-5.2 11.2-12.6 3.1z" fill="#8a4f38" stroke="#3a2418"/>
+        <path d="M17.8 18.0l-1.6 7.2 6.2 6.0 6.8-5.0 2.9-8.4" stroke="#2d2724" strokeWidth="1.0"/>
+        <rect x="24.8" y="23.6" width="4.2" height="1.4" rx="0.6" fill="#5b514a"/>
+      </svg>;
 
     /* Furniture — original 2D */
     case 'desk_iron':
@@ -316,23 +348,70 @@ const ItemGlyph = ({ id, size = 36 }) => {
     case 'chair_iron':
       return <svg {...common}><rect x="12" y="24" width="22" height="4" fill="#4a4036" stroke="#2a2218"/><rect x="32" y="10" width="3" height="18" fill="#4a4036" stroke="#2a2218"/><path d="M14 28v14M32 28v14"/></svg>;
     case 'shelf_rust':
-      return <svg {...common}><rect x="10" y="6" width="28" height="36" rx="1" fill="#6a3c28" stroke="#3a1c10"/><path d="M10 18h28M10 30h28"/></svg>;
+      return <svg {...common}>
+        {/* frame */}
+        <rect x="10" y="7" width="4" height="34" rx="1" fill="#4e4a46" stroke="#2e2a27"/>
+        <rect x="34" y="7" width="4" height="34" rx="1" fill="#55504b" stroke="#2e2a27"/>
+        <rect x="14" y="7" width="20" height="3" rx="1" fill="#4a4541" stroke="none"/>
+        <rect x="14" y="38" width="20" height="3" rx="1" fill="#6c4631" stroke="none"/>
+        {/* warped shelves */}
+        <path d="M14 17.5h20" stroke="#5d5851" strokeWidth="3.2" strokeLinecap="round"/>
+        <path d="M14 25.8h20" stroke="#615b54" strokeWidth="3.2" strokeLinecap="round"/>
+        <path d="M14 34.2h20" stroke="#5b5550" strokeWidth="3.2" strokeLinecap="round"/>
+        {/* paint chips / rust */}
+        <rect x="19.2" y="16.1" width="3.8" height="0.9" rx="0.4" fill="#8d8377"/>
+        <rect x="28.0" y="24.2" width="3.1" height="0.9" rx="0.4" fill="#7a4c34"/>
+        <rect x="17.6" y="32.7" width="2.8" height="0.9" rx="0.4" fill="#7a4c34"/>
+        {/* stored objects */}
+        <rect x="16.2" y="22.2" width="4.6" height="2.0" rx="0.4" fill="#7a6149"/>
+        <rect x="24.6" y="31.1" width="5.0" height="2.2" rx="0.4" fill="#6a5a4b"/>
+        <rect x="30.4" y="15.2" width="1.5" height="3.1" rx="0.6" fill="#98a097"/>
+      </svg>;
     case 'bed_iron':
       return <svg {...common}><rect x="6" y="22" width="36" height="12" rx="2" fill="#4a3a32" stroke="#2a1c14"/><rect x="6" y="28" width="36" height="6" fill="#4a4036" stroke="none"/><rect x="8" y="20" width="8" height="4" fill="#8a7c66" stroke="none"/></svg>;
     case 'lamp_broken':
-      return <svg {...common}><path d="M24 42V14l-6-4" stroke="#4a4036" strokeWidth="2.4"/><rect x="12" y="6" width="10" height="6" fill="#4a4036" stroke="#2a2218"/><circle cx="17" cy="14" r="3" fill="#ffd49a" stroke="#ffa860"/></svg>;
+      return <svg {...common}>
+        {/* base + bent pole */}
+        <rect x="22" y="38" width="7" height="3.6" rx="1.2" fill="#545b61" stroke="#2f3438"/>
+        <path d="M25.6 38V18.2l-5.2-4.4" stroke="#575f66" strokeWidth="2.7" strokeLinecap="round"/>
+        <path d="M20.4 13.8l-4.6 4.3" stroke="#575f66" strokeWidth="2.5" strokeLinecap="round"/>
+        {/* support + hanging wire */}
+        <path d="M22.3 26.4l-2.5 6.2" stroke="#744f37" strokeWidth="1.6" strokeLinecap="round"/>
+        <path d="M14.8 18.6v6.2" stroke="#2d2522" strokeWidth="1.2" strokeLinecap="round"/>
+        {/* broken lamp head */}
+        <rect x="8.6" y="10.4" width="11.5" height="7.6" rx="1.2" fill="#4f565d" stroke="#2f3438"/>
+        <rect x="10.8" y="12.2" width="7.2" height="4.0" rx="0.8" fill="#2f3235"/>
+        <rect x="8.5" y="16.5" width="4.2" height="1.5" rx="0.7" fill="#96a0aa" fillOpacity="0.62" transform="rotate(-20 10.6 17.2)"/>
+        <rect x="15.0" y="15.6" width="3.9" height="1.4" rx="0.7" fill="#96a0aa" fillOpacity="0.55" transform="rotate(18 17.0 16.3)"/>
+        {/* faint warm glow */}
+        <circle cx="14.2" cy="16.2" r="2.4" fill="#ffd7a7"/>
+        <circle cx="14.2" cy="16.2" r="1.2" fill="#ffb66f"/>
+      </svg>;
     case 'drum_oil':
-      return <svg {...common}><rect x="14" y="10" width="20" height="30" rx="3" fill="#6a3c28" stroke="#3a1c10"/><path d="M14 18h20M14 30h20" stroke="#3a1c10"/></svg>;
+      return <svg {...common}><rect x="14" y="10" width="20" height="30" rx="3" fill="#9a4336" stroke="#4a2018"/><path d="M14 18h20M14 30h20" stroke="#4a2018"/></svg>;
 
     /* Buildings — original 2D */
     case 'shack_scrap':
-      return <svg {...common}><path d="M8 30l16-16 16 16v12H8z" fill="#3a2a1c" stroke="#1a140e"/><rect x="20" y="32" width="8" height="10" fill="#1a1410" stroke="none"/></svg>;
+      return <svg {...common}><path d="M8 34l16-14 16 14v8H8z" fill="#3a2a1c" stroke="#1a140e"/><rect x="20" y="33" width="8" height="9" fill="#1a1410"/><rect x="8" y="29" width="32" height="3" fill="#5e3a20" opacity="0.7"/><text x="35" y="12" fontSize="9" fill="#c97b4a" fontFamily="monospace">1</text></svg>;
+    case 'shack_scrap_2':
+      return <svg {...common}><path d="M6 34l18-15 18 15v8H6z" fill="#3e2c1c" stroke="#1a140e"/><rect x="18" y="31" width="9" height="11" fill="#1a1410"/><rect x="30" y="25" width="6" height="7" fill="#1a2830" opacity="0.8" stroke="#3c2816" strokeWidth="1"/><rect x="6" y="27" width="36" height="3" fill="#6a5838" opacity="0.8"/><text x="33" y="12" fontSize="9" fill="#c97b4a" fontFamily="monospace">2</text></svg>;
+    case 'shack_scrap_3':
+      return <svg {...common}><path d="M4 34l20-17 20 17v8H4z" fill="#422e1e" stroke="#1a140e"/><rect x="17" y="30" width="10" height="12" fill="#1a1410"/><rect x="30" y="24" width="7" height="8" fill="#3a2810" opacity="0.9" stroke="#3e2a18" strokeWidth="1"/><rect x="4" y="25" width="40" height="3" fill="#5a4c30" opacity="0.9"/><rect x="28" y="14" width="5" height="11" fill="#2c2820"/><text x="31" y="12" fontSize="9" fill="#c97b4a" fontFamily="monospace">3</text></svg>;
     case 'warehouse_rust':
-      return <svg {...common}><rect x="6" y="16" width="36" height="26" fill="#6a3c28" stroke="#3a1c10"/><rect x="6" y="14" width="36" height="4" fill="#4a4036" stroke="#2a2218"/><path d="M14 24v18M24 24v18M34 24v18"/></svg>;
+      return <svg {...common}><rect x="6" y="18" width="36" height="24" fill="#6a3c28" stroke="#3a1c10"/><rect x="6" y="16" width="36" height="4" fill="#5a4828"/><rect x="18" y="26" width="12" height="16" fill="#1c1410"/><rect x="6" y="26" width="36" height="2" fill="#3a2410" opacity="0.7"/><rect x="6" y="33" width="36" height="2" fill="#3a2410" opacity="0.7"/><text x="33" y="14" fontSize="9" fill="#c97b4a" fontFamily="monospace">1</text></svg>;
+    case 'warehouse_rust_2':
+      return <svg {...common}><rect x="5" y="16" width="38" height="26" fill="#6a3c28" stroke="#3a1c10"/><rect x="5" y="14" width="38" height="4" fill="#4a3c28"/><rect x="16" y="24" width="16" height="18" fill="#1c1410"/><rect x="23" y="24" width="2" height="18" fill="#3c2816"/><rect x="5" y="23" width="38" height="2" fill="#4a3c28"/><rect x="5" y="33" width="38" height="2" fill="#4a3c28"/><rect x="36" y="28" width="5" height="9" fill="#3c2816" opacity="0.8"/><text x="31" y="13" fontSize="9" fill="#c97b4a" fontFamily="monospace">2</text></svg>;
+    case 'warehouse_rust_3':
+      return <svg {...common}><rect x="4" y="14" width="40" height="28" fill="#6a3c28" stroke="#3a1c10"/><rect x="4" y="12" width="40" height="4" fill="#4a3c28"/><rect x="15" y="22" width="18" height="20" fill="#1c1410"/><rect x="23" y="22" width="2" height="20" fill="#3c2816"/><rect x="4" y="21" width="40" height="3" fill="#4a3c28"/><rect x="4" y="32" width="40" height="3" fill="#4a3c28"/><rect x="37" y="24" width="5" height="14" fill="#3c2816"/><rect x="37" y="26" width="5" height="2" fill="#5a4828"/><rect x="37" y="32" width="5" height="2" fill="#5a4828"/><circle cx="23" cy="20" r="2" fill="#d08020" opacity="0.85"/><text x="29" y="12" fontSize="9" fill="#c97b4a" fontFamily="monospace">3</text></svg>;
 
     /* Ore — original 2D */
     case 'iron_rust':
-      return <svg {...common}><path d="M10 30l8-14 14-2 10 6-6 14-16 4z" fill="#5a3826" stroke="#2a1810"/><path d="M18 16l-2 10 8 8 8-6 4-12" stroke="#3a2418" strokeWidth="0.8"/></svg>;
+      return <svg {...common}>
+        <path d="M8.8 30.4l8.6-12.2 14.8-2.8 10.2 6.3-5.8 12.9-15.5 3.8z" fill="#8a4f38" stroke="#3a2418"/>
+        <path d="M17.2 18.2l-2.0 8.8 7.4 7.2 8.0-5.8 3.5-10.0" stroke="#2d2724" strokeWidth="1.0"/>
+        <rect x="27.5" y="20.2" width="4.5" height="1.6" rx="0.6" fill="#5b514a"/>
+        <rect x="13.3" y="25.0" width="3.8" height="1.4" rx="0.6" fill="#6f5b48"/>
+      </svg>;
 
     default:
       return <svg {...common}><rect x="8" y="8" width="32" height="32" rx="2" fill="#3a3028" stroke="#2a2218"/></svg>;
